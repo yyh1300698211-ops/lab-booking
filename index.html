@@ -4,15 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>实验室器材预约系统</title>
-    <!-- 引入 Tailwind CSS -->
+    
+    <!-- 1. Tailwind CSS (通常国内访问尚可) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 Day.js -->
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/dayjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/plugin/isoWeek.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/plugin/utc.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/plugin/timezone.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/plugin/weekday.js"></script>
-    <!-- 引入 Supabase JS 客户端 -->
+    
+    <!-- 2. Day.js (已替换为国内 Staticfile 源，解决加载卡顿问题) -->
+    <script src="https://cdn.staticfile.net/dayjs/1.11.10/dayjs.min.js"></script>
+    <script src="https://cdn.staticfile.net/dayjs/1.11.10/plugin/isoWeek.min.js"></script>
+    <script src="https://cdn.staticfile.net/dayjs/1.11.10/plugin/utc.min.js"></script>
+    <script src="https://cdn.staticfile.net/dayjs/1.11.10/plugin/timezone.min.js"></script>
+    <script src="https://cdn.staticfile.net/dayjs/1.11.10/plugin/weekday.min.js"></script>
+    
+    <!-- 3. Supabase JS (保留官方源，但在下方增加了加载失败检测) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
@@ -20,6 +23,7 @@
         .sticky-header { position: sticky; top: 0; z-index: 10; }
         .sticky-time { position: sticky; left: 0; z-index: 5; }
         .sticky-header.sticky-time { z-index: 11; }
+        
         .dragging-select { @apply bg-blue-200 bg-opacity-50 border-l-4 border-blue-500; }
         .slot-past { @apply bg-gray-50 bg-opacity-70 cursor-not-allowed; }
         .slot-locked {
@@ -36,9 +40,45 @@
         #network-status.visible {
             transform: translateY(0);
         }
+
+        /* 紧急调试面板 (仅在出错时显示) */
+        #debug-console {
+            display: none;
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.9);
+            color: #ff5555;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 9999;
+            max-height: 200px;
+            overflow-y: auto;
+            border-top: 2px solid #f00;
+        }
     </style>
+
+    <!-- 4. 全局错误捕获 (防止白屏) -->
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            // 如果发生错误，显示调试面板
+            const debug = document.getElementById('debug-console');
+            if(debug) {
+                debug.style.display = 'block';
+                debug.innerHTML += `[系统错误] ${msg} <br>位置: ${line}:${col}<br><br>`;
+                
+                // 特别检测 Supabase 加载失败
+                if (msg.includes('supabase') || msg.includes('Supabase')) {
+                    debug.innerHTML += `<strong style="color:yellow">警告：Supabase 库似乎加载失败。这通常是网络原因导致的 CDN 阻断。请尝试切换网络（如手机热点）或刷新页面。</strong><br><br>`;
+                }
+            }
+        };
+    </script>
 </head>
 <body class="bg-gray-100 text-gray-800 flex flex-col h-screen overflow-hidden">
+
+    <!-- 调试控制台 -->
+    <div id="debug-console"></div>
 
     <!-- 网络断开提示条 -->
     <div id="network-status" class="absolute top-0 left-0 right-0 bg-red-500 text-white text-center text-sm py-1 z-[60] shadow-md">
@@ -224,25 +264,38 @@
         // ================= 配置区域 =================
         const SUPABASE_URL = 'https://ajbuygcpdpiyinttmwdo.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqYnV5Z2NwZHBpeWludHRtd2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NTUyMTYsImV4cCI6MjA3OTUzMTIxNn0.8_cko-69pwVXy-AzWlwwhLxFOV4hvTvkhJoxo9ng06o';
-        const CLASS_ACCESS_CODE = 'cxj123456'; 
+        const CLASS_ACCESS_CODE = '123456'; 
         // ==========================================
 
-        dayjs.extend(dayjs_plugin_isoWeek);
-        dayjs.extend(dayjs_plugin_utc);
-        dayjs.extend(dayjs_plugin_timezone);
-        dayjs.extend(dayjs_plugin_weekday);
-        dayjs.tz.setDefault(dayjs.tz.guess());
-
-        let supabase;
-
+        // 等待库加载检查
         document.addEventListener('DOMContentLoaded', () => {
+            // 检查 Day.js 是否加载成功
+            if (typeof dayjs === 'undefined') {
+                const debug = document.getElementById('debug-console');
+                if(debug) {
+                    debug.style.display = 'block';
+                    debug.innerHTML += `[严重错误] Day.js 库未能加载。请检查网络连接。<br>`;
+                }
+                alert("系统组件加载失败（Day.js），请尝试刷新页面。");
+                return;
+            }
+
+            // 注册插件 (Staticfile 的插件结构通常是 window.dayjs_plugin_xxx)
+            dayjs.extend(window.dayjs_plugin_isoWeek);
+            dayjs.extend(window.dayjs_plugin_utc);
+            dayjs.extend(window.dayjs_plugin_timezone);
+            dayjs.extend(window.dayjs_plugin_weekday);
+            dayjs.tz.setDefault(dayjs.tz.guess());
+
+            let supabase;
+            
+            // 1. 登录逻辑
             const loginOverlay = document.getElementById('login-overlay');
             const loginForm = document.getElementById('login-form');
             const accessCodeInput = document.getElementById('access-code');
             const loginError = document.getElementById('login-error');
             const networkStatus = document.getElementById('network-status');
 
-            // 1. 登录逻辑
             if (localStorage.getItem('lab-auth') === 'true') {
                 loginOverlay.style.display = 'none';
                 initApp();
@@ -260,22 +313,37 @@
                 });
             }
 
-            // 2. 网络状态监听
+            // 2. 网络监听
             window.addEventListener('online', () => {
                 networkStatus.classList.remove('visible');
                 showToast('网络已恢复，正在刷新...', 'success');
-                if(state.currentEquipId) fetchData(); // 自动刷新
+                if(state.currentEquipId) fetchData(); 
             });
             window.addEventListener('offline', () => {
                 networkStatus.classList.add('visible');
                 showToast('网络已断开', 'error');
             });
 
-            // 3. 初始化应用
+            // 3. 初始化
             function initApp() {
+                if (typeof window.supabase === 'undefined') {
+                    const debug = document.getElementById('debug-console');
+                    if(debug) {
+                        debug.style.display = 'block';
+                        debug.innerHTML += `[严重错误] Supabase 库未能加载。<br>`;
+                    }
+                    alert("系统组件加载失败（Supabase），请尝试刷新页面。");
+                    return;
+                }
+
                 if (!SUPABASE_URL || !SUPABASE_KEY) { showToast("错误：请配置 Supabase", 'error'); return; }
-                try { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } 
-                catch (err) { console.error("Supabase init error", err); return; }
+                
+                try { 
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); 
+                } catch (err) { 
+                    console.error("Supabase init error", err); 
+                    return; 
+                }
                 
                 dom.userInp.value = state.username;
                 checkAdmin();
