@@ -5,107 +5,239 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>实验室器材预约系统</title>
     
-    <!-- 1. 基础库 (国内极速源) -->
-    <script src="https://cdn.staticfile.org/dayjs/1.11.10/dayjs.min.js"></script>
-    <script src="https://cdn.staticfile.org/dayjs/1.11.10/plugin/isoWeek.min.js"></script>
-    <script src="https://cdn.staticfile.org/dayjs/1.11.10/plugin/utc.min.js"></script>
-    <script src="https://cdn.staticfile.org/dayjs/1.11.10/plugin/timezone.min.js"></script>
-    <script src="https://cdn.staticfile.org/dayjs/1.11.10/plugin/weekday.min.js"></script>
-    <script src="https://npm.elemecdn.com/@supabase/supabase-js@2"></script>
-
-    <!-- 2. 界面样式 (原生CSS) -->
+    <!-- 0. 原生 CSS (无需下载) -->
     <style>
-        :root { --primary: #2563eb; --bg: #f8fafc; --text: #334155; --border: #cbd5e1; }
-        body { margin: 0; font-family: sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        :root { --primary: #2563eb; --bg: #f8fafc; --text: #334155; --border: #cbd5e1; --red: #ef4444; }
+        body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+        
+        /* 布局工具 */
+        .flex { display: flex; }
+        .hidden { display: none !important; }
+        .flex-1 { flex: 1; }
         
         /* 顶部导航 */
-        header { background: white; padding: 10px 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); z-index: 50; }
+        header { background: white; padding: 10px 15px; border-bottom: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.05); z-index: 50; }
         .title { font-weight: bold; font-size: 18px; color: var(--primary); margin-right: 15px; }
-        .controls { display: flex; gap: 8px; align-items: center; }
         
         /* 按钮与输入框 */
         button { padding: 5px 12px; border-radius: 4px; border: 1px solid var(--border); background: white; cursor: pointer; font-size: 13px; }
         button:hover { background: #f1f5f9; }
         button.primary { background: var(--primary); color: white; border-color: var(--primary); }
         button.primary:hover { background: #1d4ed8; }
-        input, select { padding: 5px; border: 1px solid var(--border); border-radius: 4px; }
+        button.danger { color: var(--red); border-color: #fca5a5; background: #fef2f2; }
+        input, select, textarea { padding: 5px; border: 1px solid var(--border); border-radius: 4px; font-size: 13px; }
 
-        /* 主视图 */
-        main { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
-        #week-grid { display: grid; grid-template-columns: 50px repeat(7, minmax(100px, 1fr)); overflow: auto; flex: 1; background: white; position: relative; }
+        /* 主视图区域 */
+        main { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; padding: 10px; }
         
-        .sticky-top { position: sticky; top: 0; background: #f8fafc; z-index: 10; border-bottom: 1px solid var(--border); padding: 8px; text-align: center; font-weight: bold; }
-        .sticky-left { position: sticky; left: 0; background: #f8fafc; z-index: 5; border-right: 1px solid var(--border); text-align: right; padding: 5px; font-size: 12px; color: #64748b; }
+        /* 状态条 */
+        #status-bar { background: #eff6ff; padding: 8px; border-radius: 4px; font-size: 12px; color: #1e40af; border: 1px solid #dbeafe; margin-bottom: 10px; display: none; }
+
+        /* 网格系统 */
+        .grid-container { background: white; border: 1px solid var(--border); border-radius: 6px; overflow: auto; flex: 1; position: relative; }
+        #week-grid { display: grid; grid-template-columns: 50px repeat(7, minmax(100px, 1fr)); min-height: 100%; }
+        #month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border); min-height: 100%; }
+
+        /* 单元格样式 */
+        .sticky-top { position: sticky; top: 0; background: #f8fafc; z-index: 10; border-bottom: 1px solid var(--border); padding: 8px; text-align: center; font-weight: bold; border-left: 1px solid var(--border); }
+        .sticky-left { position: sticky; left: 0; background: #f8fafc; z-index: 5; border-right: 1px solid var(--border); text-align: right; padding: 5px; font-size: 12px; color: #64748b; border-top: 1px solid var(--border); }
         .cell { border-right: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; height: 40px; position: relative; }
+        .month-cell { background: white; min-height: 80px; padding: 5px; }
         
         /* 预约块 */
-        .event { position: absolute; left: 2px; right: 2px; padding: 2px 4px; font-size: 12px; color: white; border-radius: 3px; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .event { position: absolute; left: 2px; right: 2px; padding: 2px 4px; font-size: 12px; color: white; border-radius: 3px; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; z-index: 2; }
         .event.mine { background: var(--primary); }
         .event.other { background: #eab308; }
-        .event.locked { background: #cbd5e1; background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, #fff 5px, #fff 10px); cursor: not-allowed; opacity: 0.7; }
+        .slot-locked { background: #e2e8f0 repeating-linear-gradient(45deg, transparent, transparent 5px, #fff 5px, #fff 10px); cursor: not-allowed; }
 
-        /* 加载/诊断层 (最关键的部分) */
-        #loading-layer { position: fixed; inset: 0; background: white; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .spinner { width: 30px; height: 30px; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        /* 弹窗与遮罩 */
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: center; justify-content: center; }
+        .modal { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
         
-        #console-log { width: 90%; max-width: 500px; height: 150px; background: #1e293b; color: #4ade80; font-family: monospace; font-size: 12px; padding: 10px; overflow-y: auto; border-radius: 6px; margin-top: 20px; }
-        .log-err { color: #f87171; }
-        .log-warn { color: #fbbf24; }
-
-        /* 弹窗 */
-        .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; display: none; align-items: center; justify-content: center; }
-        .modal-box { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        /* 加载动画 */
+        .spinner { width: 30px; height: 30px; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #loading-layer { background: white; z-index: 200; display: flex; flex-direction: column; }
+        #load-status { margin-top: 10px; font-size: 12px; color: #64748b; font-family: monospace; }
     </style>
+
+    <!-- 1. 稳健的脚本加载器 -->
+    <script>
+        // 资源定义：[首选源, 备用源1, 备用源2]
+        const RESOURCES = {
+            dayjs: [
+                "https://lib.baomitu.com/dayjs/1.11.10/dayjs.min.js", // 360国内源
+                "https://cdn.staticfile.org/dayjs/1.11.10/dayjs.min.js", // 七牛云
+                "https://cdnjs.cloudflare.com/ajax/libs/dayjs/1.11.10/dayjs.min.js" // 国际通用
+            ],
+            supabase: [
+                "https://npm.elemecdn.com/@supabase/supabase-js@2/dist/umd/supabase.js", // 饿了么源
+                "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js", // 官方CDN
+                "https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js" // 备用
+            ]
+        };
+
+        const PLUGINS = [
+            "plugin/isoWeek.min.js",
+            "plugin/utc.min.js",
+            "plugin/timezone.min.js",
+            "plugin/weekday.min.js"
+        ];
+
+        function updateStatus(msg) {
+            const el = document.getElementById('load-status');
+            if(el) el.innerText = msg;
+            console.log(`[System] ${msg}`);
+        }
+
+        function loadScript(urls) {
+            return new Promise((resolve, reject) => {
+                let index = 0;
+                function tryLoad() {
+                    if (index >= urls.length) return reject();
+                    const url = urls[index];
+                    updateStatus(`尝试加载资源: ${url.split('/')[2]}...`);
+                    
+                    const script = document.createElement('script');
+                    script.src = url;
+                    script.onload = () => resolve(url);
+                    script.onerror = () => {
+                        console.warn(`Failed to load: ${url}`);
+                        index++;
+                        tryLoad();
+                    };
+                    document.head.appendChild(script);
+                }
+                tryLoad();
+            });
+        }
+
+        // 插件加载逻辑 (基于成功的 Dayjs 源)
+        async function loadPlugins(dayjsUrl) {
+            // 尝试推断 base url
+            let baseUrl = dayjsUrl.substring(0, dayjsUrl.lastIndexOf('/') + 1);
+            // 特殊处理：如果 fallback 到了 cdnjs 等结构不同的源，可能需要硬编码备用
+            const backups = [
+                baseUrl,
+                "https://lib.baomitu.com/dayjs/1.11.10/",
+                "https://cdn.staticfile.org/dayjs/1.11.10/"
+            ];
+
+            for (const plugin of PLUGINS) {
+                let loaded = false;
+                for (const base of backups) {
+                    try {
+                        await loadScript([base + plugin]);
+                        loaded = true;
+                        break;
+                    } catch(e) {}
+                }
+                if (!loaded) console.error(`插件 ${plugin} 加载失败，部分功能可能受限`);
+            }
+        }
+
+        window.initSystem = async () => {
+            try {
+                // 1. 加载 Day.js
+                const dayjsUrl = await loadScript(RESOURCES.dayjs);
+                updateStatus("Day.js 加载成功");
+
+                // 2. 加载插件
+                await loadPlugins(dayjsUrl);
+                updateStatus("插件加载完成");
+
+                // 3. 加载 Supabase
+                await loadScript(RESOURCES.supabase);
+                updateStatus("Supabase 加载成功");
+
+                // 4. 启动应用
+                if (window.appStart) window.appStart();
+                
+            } catch (e) {
+                updateStatus("错误: 核心库无法加载。请检查网络连接。");
+                const btn = document.createElement('button');
+                btn.innerText = "刷新重试";
+                btn.className = "primary";
+                btn.style.marginTop = "10px";
+                btn.onclick = () => location.reload();
+                document.getElementById('loading-layer').appendChild(btn);
+            }
+        };
+    </script>
 </head>
 <body>
 
-    <!-- 1. 诊断加载层 -->
-    <div id="loading-layer">
-        <div id="spinner" class="spinner"></div>
-        <h3 id="loading-text">系统启动中...</h3>
-        <div id="console-log"></div>
-        <button id="reload-btn" class="primary" style="margin-top:15px; display:none;" onclick="location.reload()">重新加载页面</button>
-        <!-- 强制重置按钮 -->
-        <button onclick="hardReset()" style="margin-top:30px; color:#94a3b8; background:none; border:none; text-decoration:underline; font-size:12px;">卡住了？点击此处强制重置</button>
+    <!-- 1. 启动/加载层 -->
+    <div id="loading-layer" class="overlay" style="display: flex;">
+        <div class="spinner"></div>
+        <p style="margin-top:15px; color:#333; font-weight:bold;">系统初始化中...</p>
+        <div id="load-status">准备连接...</div>
     </div>
 
     <!-- 2. 登录层 -->
-    <div id="login-layer" style="display:none; position:fixed; inset:0; background:#f8fafc; z-index:90; align-items:center; justify-content:center;">
-        <div style="background:white; padding:30px; border-radius:8px; box-shadow:0 4px 6px rgba(0,0,0,0.1); text-align:center;">
+    <div id="login-layer" class="overlay">
+        <div class="modal" style="text-align: center;">
             <h2>🔐 身份验证</h2>
-            <input type="password" id="pass-input" placeholder="请输入班级口令" style="display:block; width:100%; margin:15px 0; padding:10px;">
-            <button class="primary" style="width:100%; padding:10px;" onclick="checkPass()">进入系统</button>
+            <input type="password" id="access-code" placeholder="请输入班级口令" style="width:100%; margin:15px 0; padding:10px;">
+            <button class="primary" style="width:100%; padding:10px;" id="login-btn">进入系统</button>
+            <p id="login-error" style="color:red; display:none; margin-top:10px;">口令错误</p>
         </div>
     </div>
 
-    <!-- 3. 主界面 -->
-    <header>
-        <div class="controls">
+    <!-- 3. 顶部导航 -->
+    <header class="flex justify-between items-center">
+        <div class="flex items-center gap-2">
             <div class="title">🔬 器材预约</div>
             <input id="user-name" placeholder="姓名" style="width:80px">
-            <button class="primary" onclick="updateUser()">确认</button>
+            <button id="user-confirm-btn" class="primary">确认</button>
         </div>
-        <div class="controls">
-            <span>当前器材:</span>
-            <select id="eq-select" style="width:150px"></select>
-            <button id="manage-btn" style="display:none;" onclick="openManage()">⚙️</button>
-            <button onclick="app.fetchData()">⟳</button>
-        </div>
-        <div class="controls">
-            <button onclick="changeDate(-7)">←周</button>
-            <button onclick="resetDate()">今天</button>
-            <button onclick="changeDate(7)">周→</button>
+        <div class="flex items-center gap-2" style="flex-wrap: wrap; justify-content: flex-end;">
+            <span>器材:</span>
+            <select id="eq-select" style="width:120px"></select>
+            <button id="manage-btn" style="display:none;">⚙️</button>
+            <button id="refresh-btn" title="刷新">⟳</button>
+            <div style="width:1px; height:20px; background:var(--border); margin:0 5px;"></div>
+            <button id="view-btn" class="primary">月视图</button>
+            <button id="today-btn">今天</button>
+            <button id="logout-btn" class="danger">退出</button>
         </div>
     </header>
 
+    <!-- 4. 主内容 -->
     <main>
-        <div id="week-grid"></div>
+        <div id="status-bar" class="flex justify-between">
+            <span>当前器材: <b id="st-eq">--</b></span>
+            <span>用户: <b id="st-user">--</b></span>
+        </div>
+
+        <!-- 周视图 -->
+        <div id="week-view" class="flex flex-col flex-1">
+            <div class="flex justify-between items-center mb-2">
+                <button id="w-prev">← 上周</button>
+                <strong id="w-title">...</strong>
+                <button id="w-next">下周 →</button>
+            </div>
+            <div class="grid-container">
+                <div id="week-grid"></div>
+            </div>
+        </div>
+
+        <!-- 月视图 -->
+        <div id="month-view" class="flex-col flex-1 hidden">
+            <div class="flex justify-between items-center mb-2">
+                <button id="m-prev">← 上月</button>
+                <strong id="m-title">...</strong>
+                <button id="m-next">下月 →</button>
+            </div>
+            <div class="grid-container">
+                <div id="month-grid"></div>
+            </div>
+        </div>
     </main>
 
-    <!-- 4. 预约/详情弹窗 -->
-    <div id="modal" class="modal-mask">
-        <div class="modal-box">
+    <!-- 5. 通用弹窗 -->
+    <div id="modal-overlay" class="overlay">
+        <div class="modal">
             <h3 id="m-title" style="margin-top:0">标题</h3>
             <div id="m-body"></div>
             <div id="m-foot" style="margin-top:20px; text-align:right; display:flex; gap:10px; justify-content:flex-end;"></div>
@@ -113,381 +245,321 @@
     </div>
 
     <script>
+        // === 启动脚本加载 ===
+        window.initSystem();
+
         // === 配置 ===
         const CFG = {
             url: 'https://ajbuygcpdpiyinttmwdo.supabase.co',
             key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqYnV5Z2NwZHBpeWludHRtd2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NTUyMTYsImV4cCI6MjA3OTUzMTIxNn0.8_cko-69pwVXy-AzWlwwhLxFOV4hvTvkhJoxo9ng06o',
-            pass: 'cxj123456'
+            pass: '123456'
         };
 
-        // === 日志系统 ===
-        function log(msg, type='info') {
-            const box = document.getElementById('console-log');
-            const line = document.createElement('div');
-            line.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            if(type === 'err') line.className = 'log-err';
-            box.appendChild(line);
-            box.scrollTop = box.scrollHeight;
+        // 全局变量
+        let supabase;
+        let state = {
+            user: localStorage.getItem('lab-user') || '',
+            isAdmin: false,
+            date: null, 
+            equipId: null,
+            equips: [], bookings: [], locks: [],
+            mode: 'week'
+        };
+
+        const get = (id) => document.getElementById(id);
+
+        // === 主程序 (在资源加载后调用) ===
+        window.appStart = () => {
+            try {
+                // 注册 Dayjs
+                dayjs.extend(window.dayjs_plugin_isoWeek);
+                dayjs.extend(window.dayjs_plugin_utc);
+                dayjs.extend(window.dayjs_plugin_timezone);
+                dayjs.extend(window.dayjs_plugin_weekday);
+                dayjs.tz.setDefault(dayjs.tz.guess());
+                state.date = dayjs().startOf('day');
+
+                // 初始化 Supabase
+                supabase = window.supabase.createClient(CFG.url, CFG.key);
+            } catch(e) {
+                updateStatus("初始化失败: " + e.message);
+                return;
+            }
+
+            // 界面切换
+            get('loading-layer').style.display = 'none';
+            if (localStorage.getItem('lab-auth') === 'true') {
+                initUI();
+            } else {
+                get('login-layer').style.display = 'flex';
+            }
+            
+            bindEvents();
+        };
+
+        // === 登录 ===
+        function bindEvents() {
+            const loginBtn = get('login-btn');
+            if(loginBtn) loginBtn.onclick = () => {
+                if (get('access-code').value === CFG.pass) {
+                    localStorage.setItem('lab-auth', 'true');
+                    get('login-layer').style.display = 'none';
+                    initUI();
+                } else {
+                    get('login-error').style.display = 'block';
+                }
+            };
+
+            // 顶部按钮
+            get('user-confirm-btn').onclick = () => {
+                const v = get('user-name').value.trim();
+                if(!v) return alert('请输入姓名');
+                state.user = v; localStorage.setItem('lab-user', v);
+                checkAdmin(); updateStatus(); render(); alert('用户已更新');
+            };
+            get('logout-btn').onclick = () => { localStorage.removeItem('lab-auth'); location.reload(); };
+            get('refresh-btn').onclick = () => fetchEquipments();
+            
+            // 导航
+            get('today-btn').onclick = () => { state.date = dayjs(); fetchData(); };
+            get('w-prev').onclick = () => { state.date = state.date.subtract(1, 'week'); fetchData(); };
+            get('w-next').onclick = () => { state.date = state.date.add(1, 'week'); fetchData(); };
+            get('m-prev').onclick = () => { state.date = state.date.subtract(1, 'month'); fetchData(); };
+            get('m-next').onclick = () => { state.date = state.date.add(1, 'month'); fetchData(); };
+            get('view-btn').onclick = () => {
+                state.mode = state.mode === 'week' ? 'month' : 'week';
+                get('view-btn').textContent = state.mode === 'week' ? '月视图' : '周视图';
+                fetchData();
+            };
+            
+            // 管理
+            get('manage-btn').onclick = openManageModal;
+            if(get('eq-select')) get('eq-select').onchange = (e) => { state.equipId = e.target.value; fetchData(); };
         }
 
-        // === 强制重置 ===
-        window.hardReset = () => {
-            if(confirm('确定要清除所有缓存并重置吗？')) {
-                localStorage.clear();
-                location.reload();
+        function initUI() {
+            if(get('user-name')) get('user-name').value = state.user;
+            checkAdmin();
+            fetchEquipments();
+        }
+
+        // === 数据 ===
+        async function fetchEquipments() {
+            const { data, error } = await supabase.from('equipment').select('*').order('name');
+            if (error) return alert('获取器材失败: ' + error.message);
+            
+            state.equips = data || [];
+            const sel = get('eq-select');
+            sel.innerHTML = '';
+
+            if (state.equips.length === 0) {
+                sel.innerHTML = '<option>暂无器材</option>';
+                return;
             }
-        };
 
-        // === 应用核心 ===
-        const app = {
-            user: localStorage.getItem('lab-user') || '',
-            date: null,
-            equipId: null,
-            equips: [],
-            bookings: [],
-            locks: [],
-            supabase: null,
+            state.equips.forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.id; opt.text = e.name;
+                sel.appendChild(opt);
+            });
 
-            async init() {
-                log('初始化 Day.js...');
-                if(typeof dayjs === 'undefined') return this.fatal('Day.js 加载失败');
-                dayjs.extend(window.dayjs_plugin_isoWeek);
-                this.date = dayjs().startOf('day');
-
-                log('连接 Supabase 数据库...');
-                if(typeof window.supabase === 'undefined') return this.fatal('Supabase SDK 加载失败');
-                
-                try {
-                    this.supabase = window.supabase.createClient(CFG.url, CFG.key);
-                    // 简单的 Ping 测试
-                    const start = Date.now();
-                    await this.timeout(this.supabase.from('equipment').select('count', { count: 'exact', head: true }), 5000);
-                    log(`数据库连接成功 (${Date.now() - start}ms)`, 'ok');
-                } catch(e) {
-                    return this.fatal('无法连接数据库: ' + e.message);
-                }
-
-                // 验证登录
-                if(localStorage.getItem('lab-auth') !== 'true') {
-                    document.getElementById('loading-layer').style.display = 'none';
-                    document.getElementById('login-layer').style.display = 'flex';
-                } else {
-                    this.start();
-                }
-            },
-
-            async start() {
-                document.getElementById('login-layer').style.display = 'none';
-                document.getElementById('loading-layer').style.display = 'flex';
-                document.getElementById('user-name').value = this.user;
-                this.checkAdmin();
-
-                await this.fetchEquips();
-            },
-
-            // 带超时的请求包装器 (核心防卡死逻辑)
-            timeout(promise, ms=8000) {
-                return Promise.race([
-                    promise,
-                    new Promise((_, reject) => setTimeout(() => reject(new Error("请求超时，网络不稳定")), ms))
-                ]);
-            },
-
-            async fetchEquips() {
-                log('正在获取器材列表...');
-                try {
-                    const { data, error } = await this.timeout(
-                        this.supabase.from('equipment').select('*').order('name')
-                    );
-                    if(error) throw error;
-                    
-                    this.equips = data || [];
-                    const sel = document.getElementById('eq-select');
-                    sel.innerHTML = '';
-                    
-                    if(this.equips.length === 0) {
-                        sel.innerHTML = '<option>无器材</option>';
-                        log('数据库中没有器材', 'warn');
-                        this.hideLoading();
-                        return;
-                    }
-
-                    this.equips.forEach(e => {
-                        const opt = document.createElement('option');
-                        opt.value = e.id; opt.innerText = e.name;
-                        sel.appendChild(opt);
-                    });
-
-                    // 恢复选择
-                    if(this.equipId && this.equips.find(e=>e.id==this.equipId)) {
-                        sel.value = this.equipId;
-                    } else {
-                        this.equipId = this.equips[0].id;
-                        sel.value = this.equipId;
-                    }
-
-                    log(`获取到 ${this.equips.length} 个器材`);
-                    await this.fetchData();
-
-                } catch(e) {
-                    this.fatal('器材列表加载失败: ' + e.message);
-                }
-            },
-
-            async fetchData() {
-                if(!this.equipId) return;
-                log(`正在同步器材(ID:${this.equipId})数据...`);
-                
-                // 显示加载状态，但不遮挡全屏
-                document.title = "正在同步...";
-                
-                try {
-                    // 分步加载，防止并发堵塞
-                    const t1 = Date.now();
-                    const res1 = await this.timeout(this.supabase.from('bookings').select('*').eq('equipment_id', this.equipId));
-                    if(res1.error) throw res1.error;
-                    log(`预约数据加载完成 (${Date.now()-t1}ms)`);
-
-                    const res2 = await this.timeout(this.supabase.from('locked_dates').select('lock_date').eq('equipment_id', this.equipId));
-                    if(res2.error) throw res2.error;
-                    log(`锁定数据加载完成`);
-
-                    this.bookings = res1.data.map(b => ({...b, start: dayjs(b.start_time), end: dayjs(b.end_time)}));
-                    this.locks = res2.data.map(l => l.lock_date);
-
-                    this.render();
-                    this.hideLoading();
-                    document.title = "实验室器材预约系统";
-
-                } catch(e) {
-                    alert('数据同步失败: ' + e.message + '\n请点击右上角刷新按钮重试');
-                    log('同步失败: ' + e.message, 'err');
-                    this.hideLoading(); // 即使失败也关闭遮罩，允许用户操作
-                }
-            },
-
-            render() {
-                const grid = document.getElementById('week-grid');
-                grid.innerHTML = '';
-                
-                const startWeek = this.date.day(0); // 周日开始
-                
-                // 左上角
-                grid.appendChild(this.div('sticky-top sticky-left', ''));
-
-                // 表头
-                for(let i=0; i<7; i++) {
-                    const d = startWeek.add(i, 'day');
-                    const dStr = d.format('YYYY-MM-DD');
-                    const isLocked = this.locks.includes(dStr);
-                    const lockBtn = this.user === 'admins' ? `<span onclick="app.toggleLock('${dStr}', ${isLocked})" style="cursor:pointer">${isLocked?'🔒':'🔓'}</span>` : (isLocked?'🔒':'');
-                    grid.appendChild(this.div('sticky-top', `${d.format('MM/DD')} ${lockBtn}`));
-                }
-
-                // 网格
-                for(let h=0; h<24; h++) {
-                    grid.appendChild(this.div('sticky-left', `${h}:00`));
-                    for(let d=0; d<7; d++) {
-                        const date = startWeek.add(d, 'day');
-                        const isLocked = this.locks.includes(date.format('YYYY-MM-DD'));
-                        const cell = this.div(`cell ${isLocked?'event locked':''}`, '');
-                        if(!isLocked) {
-                            cell.onclick = () => this.openBook(date.hour(h));
-                        }
-                        grid.appendChild(cell);
-                    }
-                }
-
-                // 渲染预约
-                this.bookings.forEach(b => {
-                    if(b.start.isBefore(startWeek) || b.start.isAfter(startWeek.add(7, 'day'))) return;
-                    
-                    const col = b.start.diff(startWeek, 'day') + 2;
-                    const row = b.start.hour() + 2;
-                    const span = b.end.diff(b.start, 'hour');
-                    const isMine = b.user_id === this.user;
-                    
-                    const el = this.div(`event ${isMine?'mine':'other'}`, `<b>${b.user_id}</b> ${b.remarks||''}`);
-                    el.style.gridColumn = col;
-                    el.style.gridRow = `${row} / span ${span}`;
-                    el.onclick = (e) => { e.stopPropagation(); this.openDetail(b); };
-                    grid.appendChild(el);
-                });
-            },
-
-            // --- 交互 ---
-            openBook(h) {
-                if(!this.user || this.user==='admins') return alert('请先输入姓名');
-                const t = prompt("请输入预约时长（小时），默认1小时", "1");
-                if(!t) return;
-                const duration = parseInt(t);
-                const note = prompt("请输入备注 (可选)");
-                
-                // 此处简化，实际应使用 Modal
-                // 因为之前的代码太长可能导致加载问题，这里简化为 Prompt 确保最基础功能可用
-                // 如果需要 Modal，可以后续再加
-                
-                // 这里因为点击的是格子，我们需要反推时间。
-                // 简化：为了稳健，这里暂不实现复杂的反推，而是直接重用逻辑
-                // 为了确保能用，我将直接模拟一次点击
-                // 实际上，上面的 onclick 传递了 hour
-                // 我们需要精确的日期
-                // 由于 render 中 loop 很难传参，我们用 dataset
-                alert("请刷新页面使用更高级的交互（当前为安全模式）");
-            },
-
-            // 重新实现一个简单的点击预约，不依赖复杂事件
-            // 上面的 render 代码里 cell.onclick = () => this.openBook(date.hour(h)); 
-            // 但是 date 变量在闭包里。
-            // 让我们修正 render
-            
-            // --- 辅助 ---
-            div(cls, html) {
-                const d = document.createElement('div');
-                d.className = cls; d.innerHTML = html;
-                return d;
-            },
-            
-            hideLoading() {
-                document.getElementById('loading-layer').style.display = 'none';
-            },
-            
-            fatal(msg) {
-                log(msg, 'err');
-                document.getElementById('loading-text').innerText = "系统错误";
-                document.getElementById('loading-text').style.color = "red";
-                document.getElementById('spinner').style.display = "none";
-                document.getElementById('reload-btn').style.display = "block";
-            },
-
-            checkAdmin() {
-                const btn = document.getElementById('manage-btn');
-                if(this.user === 'admins') btn.style.display = 'inline-block';
-                else btn.style.display = 'none';
-            }
-        };
-
-        // 全局暴露
-        window.app = app;
-        
-        // 登录处理
-        window.checkPass = () => {
-            if(document.getElementById('pass-input').value === CFG.pass) {
-                localStorage.setItem('lab-auth', 'true');
-                app.start();
+            if (state.equipId && state.equips.find(e => e.id == state.equipId)) {
+                sel.value = state.equipId;
             } else {
-                alert('口令错误');
+                state.equipId = state.equips[0].id;
+                sel.value = state.equipId;
             }
-        };
+            fetchData();
+        }
 
-        window.updateUser = () => {
-            const v = document.getElementById('user-name').value;
-            if(!v) return alert('请输入姓名');
-            app.user = v;
-            localStorage.setItem('lab-user', v);
-            app.checkAdmin();
-            app.render(); // 刷新颜色
-            alert('用户已更新');
-        };
+        async function fetchData() {
+            if (!state.equipId) return;
+            const [bRes, lRes] = await Promise.all([
+                supabase.from('bookings').select('*').eq('equipment_id', state.equipId),
+                supabase.from('locked_dates').select('lock_date').eq('equipment_id', state.equipId)
+            ]);
 
-        // 简化版的点击预约逻辑 (覆盖上面的 render 里的空函数)
-        app.render = function() {
-            const grid = document.getElementById('week-grid');
+            if (bRes.error) console.error(bRes.error);
+            state.bookings = (bRes.data || []).map(b => ({ ...b, start: dayjs(b.start_time), end: dayjs(b.end_time) }));
+            state.locks = (lRes.data || []).map(l => l.lock_date);
+
+            updateStatus();
+            render();
+        }
+
+        // === 渲染 ===
+        function render() {
+            if (state.mode === 'week') renderWeek();
+            else renderMonth();
+        }
+
+        function renderWeek() {
+            const grid = get('week-grid');
             grid.innerHTML = '';
-            const startWeek = this.date.day(0);
-            
-            grid.appendChild(this.div('sticky-top sticky-left', ''));
+            get('week-view').classList.remove('hidden');
+            get('month-view').classList.add('hidden');
+            get('w-title').textContent = state.date.format('YYYY-MM-DD');
+
+            grid.appendChild(div('sticky-top sticky-left', ''));
+
+            const startWeek = state.date.weekday(0);
             for(let i=0; i<7; i++) {
                 const d = startWeek.add(i, 'day');
-                const isLocked = this.locks.includes(d.format('YYYY-MM-DD'));
-                const lockIcon = this.user==='admins' ? (isLocked?'🔒':'🔓') : (isLocked?'🔒':'');
-                const head = this.div('sticky-top', `${d.format('MM/DD')} ${lockIcon}`);
-                if(this.user==='admins') head.onclick = () => this.toggleLock(d.format('YYYY-MM-DD'), isLocked);
+                const dStr = d.format('YYYY-MM-DD');
+                const isLocked = state.locks.includes(dStr);
+                const lockIcon = state.isAdmin ? (isLocked ? '🔒' : '🔓') : (isLocked ? '🔒' : '');
+                const head = div('sticky-top', `${d.format('MM/DD')} ${lockIcon}`);
+                if(state.isAdmin) {
+                    head.style.cursor = 'pointer';
+                    head.onclick = () => toggleLock(dStr, isLocked);
+                }
                 grid.appendChild(head);
             }
 
             for(let h=0; h<24; h++) {
-                grid.appendChild(this.div('sticky-left', `${h}:00`));
+                grid.appendChild(div('sticky-left', `${h}:00`));
                 for(let d=0; d<7; d++) {
-                    const day = startWeek.add(d, 'day');
-                    const isLocked = this.locks.includes(day.format('YYYY-MM-DD'));
-                    const cell = this.div(`cell ${isLocked?'event locked':''}`, '');
-                    if(!isLocked) {
-                        // 绑定点击事件
-                        cell.onclick = () => this.createBooking(day.hour(h));
-                    }
+                    const date = startWeek.add(d, 'day');
+                    const isLocked = state.locks.includes(date.format('YYYY-MM-DD'));
+                    const cell = div(`cell ${isLocked ? 'slot-locked' : ''}`, '');
+                    if(!isLocked) cell.onclick = () => createBooking(date.hour(h));
                     grid.appendChild(cell);
                 }
             }
-            
-            this.bookings.forEach(b => {
+
+            state.bookings.forEach(b => {
                 if(b.start.isBefore(startWeek) || b.start.isAfter(startWeek.add(7, 'day'))) return;
                 const col = b.start.diff(startWeek, 'day') + 2;
                 const row = b.start.hour() + 2;
                 const span = b.end.diff(b.start, 'hour');
-                const el = this.div(`event ${b.user_id===this.user?'mine':'other'}`, `<b>${b.user_id}</b> ${b.remarks||''}`);
-                el.style.gridColumn = col; el.style.gridRow = `${row} / span ${span}`;
-                el.onclick = (e) => { e.stopPropagation(); this.viewBooking(b); };
+                const isMine = b.user_id === state.user;
+                const el = div(`event ${isMine ? 'mine' : 'other'}`, `<b>${b.user_id}</b> ${b.remarks||''}`);
+                el.style.gridColumn = col;
+                el.style.gridRow = `${row} / span ${span}`;
+                el.onclick = (e) => { e.stopPropagation(); showDetail(b); };
                 grid.appendChild(el);
             });
-        };
+        }
 
-        app.createBooking = async function(timeObj) {
-            if(!this.user || this.user==='admins') return alert('请先输入姓名');
-            const note = prompt(`预约 ${timeObj.format('MM-DD HH:mm')} (1小时)\n请输入备注:`);
+        function renderMonth() {
+            const grid = get('month-grid');
+            grid.innerHTML = '';
+            get('week-view').classList.add('hidden');
+            get('month-view').classList.remove('hidden');
+            get('m-title').textContent = state.date.format('YYYY年MM月');
+
+            ['日','一','二','三','四','五','六'].forEach(t => {
+                const d = div('month-cell', t);
+                d.style.textAlign = 'center'; d.style.fontWeight = 'bold'; d.style.background = '#f8fafc'; d.style.minHeight = 'auto';
+                grid.appendChild(d);
+            });
+
+            const startMonth = state.date.startOf('month');
+            const startGrid = startMonth.weekday(0);
+
+            for(let i=0; i<42; i++) {
+                const d = startGrid.add(i, 'day');
+                const isCurr = d.month() === startMonth.month();
+                const users = [...new Set(state.bookings.filter(b => b.start.isSame(d, 'day')).map(b => b.user_id))];
+                
+                const html = `<div style="text-align:right;font-weight:bold;font-size:12px;color:#999">${d.date()}</div>
+                              <div>${users.map(u => `<span class="user-tag" style="background:#dbeafe;color:#1e40af;padding:1px 4px;border-radius:3px;font-size:11px;margin:1px;display:inline-block">${u}</span>`).join('')}</div>`;
+                const cell = div('month-cell', html);
+                if(!isCurr) cell.style.background = '#f1f5f9';
+                grid.appendChild(cell);
+            }
+        }
+
+        // === 业务 ===
+        async function createBooking(time) {
+            if(!state.user || state.user === 'admins') return alert('请先在左上角输入姓名并确认');
+            const note = prompt(`预约 ${time.format('MM-DD HH:mm')} (1小时)\n请输入备注:`);
             if(note === null) return;
-            
+
             const data = {
-                equipment_id: this.equipId,
-                user_id: this.user,
+                equipment_id: state.equipId,
+                user_id: state.user,
                 remarks: note,
-                start_time: timeObj.toISOString(),
-                end_time: timeObj.add(1, 'hour').toISOString()
+                start_time: time.toISOString(),
+                end_time: time.add(1, 'hour').toISOString()
             };
-            
-            try {
-                const { error } = await this.supabase.from('bookings').insert(data);
-                if(error) throw error;
-                this.fetchData();
-            } catch(e) { alert('预约失败: '+e.message); }
-        };
+            const { error } = await supabase.from('bookings').insert(data);
+            if(error) alert('预约失败: ' + error.message); else fetchData();
+        }
 
-        app.viewBooking = async function(b) {
-            const isMine = b.user_id === this.user;
-            const isAdmin = this.user === 'admins';
-            if(!isMine && !isAdmin) return alert(`预约人: ${b.user_id}\n备注: ${b.remarks||'无'}`);
+        function showDetail(b) {
+            const canEdit = b.user_id === state.user || state.isAdmin;
+            let html = `<p>用户: ${b.user_id}</p><p>时间: ${b.start.format('MM-DD HH:mm')}</p>
+                        <textarea id="dt-note" style="width:100%" rows="3" ${!canEdit?'disabled':''}>${b.remarks||''}</textarea>`;
             
-            if(confirm(`预约人: ${b.user_id}\n时间: ${b.start.format('HH:mm')}\n备注: ${b.remarks}\n\n【确定要删除这条预约吗？】`)) {
-                const { error } = await this.supabase.from('bookings').delete().eq('id', b.id);
-                if(error) alert('删除失败'); else this.fetchData();
+            let btns = [{ text: '关闭', click: closeModal }];
+            if(canEdit) {
+                btns.unshift({ text: '删除', cls: 'danger', click: async () => {
+                    if(confirm('确定删除？')) {
+                        await supabase.from('bookings').delete().eq('id', b.id);
+                        closeModal(); fetchData();
+                    }
+                }});
+                btns.unshift({ text: '保存', cls: 'primary', click: async () => {
+                    await supabase.from('bookings').update({ remarks: get('dt-note').value }).eq('id', b.id);
+                    closeModal(); fetchData();
+                }});
             }
-        };
+            showModal('详情', html, btns);
+        }
 
-        app.toggleLock = async function(dStr, isLocked) {
-            if(!confirm(isLocked ? `解锁 ${dStr}?` : `锁定 ${dStr} (禁止预约)?`)) return;
-            const q = isLocked ? this.supabase.from('locked_dates').delete().eq('equipment_id', this.equipId).eq('lock_date', dStr)
-                               : this.supabase.from('locked_dates').insert({equipment_id: this.equipId, lock_date: dStr});
-            await q; this.fetchData();
-        };
-        
-        // 辅助：管理器材
-        window.openManage = () => {
-            const name = prompt("添加新器材 (输入名称): \n\n或者输入 'del:ID' 来删除器材");
+        async function toggleLock(dateStr, isLocked) {
+            if(isLocked) await supabase.from('locked_dates').delete().eq('equipment_id', state.equipId).eq('lock_date', dateStr);
+            else await supabase.from('locked_dates').insert({ equipment_id: state.equipId, lock_date: dateStr });
+            fetchData();
+        }
+
+        function openManageModal() {
+            const html = `<div style="display:flex;gap:5px;margin-bottom:10px;">
+                <input id="new-eq" placeholder="新器材名" style="flex:1">
+                <button class="primary" onclick="addEq()">添加</button>
+            </div>
+            <div style="max-height:200px;overflow:auto;border:1px solid #eee;">
+                ${state.equips.map(e => `<div style="padding:8px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;">
+                    <span>${e.name}</span><span onclick="delEq(${e.id})" style="color:red;cursor:pointer">删除</span>
+                </div>`).join('')}
+            </div>`;
+            showModal('管理器材', html, [{ text: '完成', click: closeModal }]);
+        }
+
+        window.addEq = async () => {
+            const name = get('new-eq').value;
             if(!name) return;
-            if(name.startsWith('del:')) {
-                app.supabase.from('equipment').delete().eq('id', name.split(':')[1]).then(app.fetchEquips);
-            } else {
-                app.supabase.from('equipment').insert({name}).then(app.fetchEquips);
-            }
+            await supabase.from('equipment').insert({ name });
+            fetchEquipments(); closeModal();
+        };
+        window.delEq = async (id) => {
+            if(confirm('确定删除？')) { await supabase.from('equipment').delete().eq('id', id); fetchEquipments(); closeModal(); }
         };
 
-        // 导航
-        window.changeDate = (d) => { app.date = app.date.add(d, 'day'); app.render(); };
-        window.resetDate = () => { app.date = dayjs().startOf('day'); app.render(); };
-        document.getElementById('eq-select').onchange = (e) => { app.equipId = e.target.value; app.fetchData(); };
-
-        // 启动
-        window.onload = () => app.init();
+        // === 辅助 ===
+        function div(cls, html) { const d=document.createElement('div'); d.className=cls; d.innerHTML=html; return d; }
+        function checkAdmin() { state.isAdmin = state.user === 'admins'; get('manage-btn').style.display = state.isAdmin ? 'block' : 'none'; }
+        function updateStatus() {
+            const eq = state.equips.find(e => e.id == state.equipId);
+            get('st-eq').textContent = eq ? eq.name : '未知';
+            get('status-bar').style.display = 'flex';
+            get('st-user').textContent = state.user || '未设置';
+        }
+        function showModal(title, body, btns) {
+            get('m-title').textContent = title;
+            get('m-body').innerHTML = body;
+            get('m-foot').innerHTML = '';
+            btns.forEach(b => {
+                const btn = document.createElement('button');
+                btn.textContent = b.text;
+                if(b.cls) btn.className = b.cls;
+                btn.onclick = b.click;
+                get('m-foot').appendChild(btn);
+            });
+            get('modal-overlay').style.display = 'flex';
+        }
+        function closeModal() { get('modal-overlay').style.display = 'none'; }
 
     </script>
 </body>
