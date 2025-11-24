@@ -5,701 +5,638 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>实验室器材预约系统</title>
     
-    <!-- 0. 原生加载动画 (确保无网也能显示) -->
+    <!-- 1. 核心 JS 库 (使用国内 Staticfile 源) -->
+    <script src="https://cdn.staticfile.org/dayjs/1.11.10/dayjs.min.js"></script>
+    <script src="https://cdn.staticfile.org/dayjs/1.11.10/plugin/isoWeek.min.js"></script>
+    <script src="https://cdn.staticfile.org/dayjs/1.11.10/plugin/utc.min.js"></script>
+    <script src="https://cdn.staticfile.org/dayjs/1.11.10/plugin/timezone.min.js"></script>
+    <script src="https://cdn.staticfile.org/dayjs/1.11.10/plugin/weekday.min.js"></script>
+    <!-- Supabase (使用饿了么源) -->
+    <script src="https://npm.elemecdn.com/@supabase/supabase-js@2"></script>
+
+    <!-- 2. 原生 CSS 样式 -->
     <style>
-        body { margin: 0; font-family: sans-serif; background: #f3f4f6; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-        #init-layer {
-            position: fixed; inset: 0; background: #fff; z-index: 9999;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        :root {
+            --primary: #2563eb; --primary-hover: #1d4ed8;
+            --bg: #f3f4f6; --white: #ffffff;
+            --text: #1f2937; --text-light: #6b7280;
+            --border: #e5e7eb;
+            --red: #ef4444; --yellow: #eab308;
         }
-        .loader-ring {
-            width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top: 4px solid #2563eb; border-radius: 50%;
-            animation: spin 1s linear infinite;
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: -apple-system, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* 通用组件 */
+        button { cursor: pointer; border: 1px solid transparent; padding: 6px 12px; border-radius: 4px; font-size: 14px; transition: all 0.2s; }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-danger { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+        .btn-danger:hover { background: #fecaca; }
+        .btn-outline { background: white; border-color: var(--border); color: var(--text); }
+        .btn-outline:hover { background: #f9fafb; }
+        
+        input, select, textarea { padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 14px; outline: none; }
+        input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.2); }
+
+        /* 布局 */
+        header { background: var(--white); padding: 10px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; z-index: 20; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .header-left, .header-right { display: flex; align-items: center; gap: 10px; }
+        .title { font-size: 18px; font-weight: bold; color: var(--primary); margin-right: 10px; display: flex; align-items: center; gap: 5px; }
+        
+        main { flex: 1; overflow: hidden; padding: 15px; display: flex; flex-direction: column; }
+        
+        /* 状态栏 */
+        #status-bar { background: #eff6ff; border: 1px solid #dbeafe; color: #1e3a8a; padding: 8px 15px; border-radius: 6px; margin-bottom: 15px; display: flex; justify-content: space-between; font-size: 13px; display: none; }
+        
+        /* 视图控制 */
+        .view-controls { display: flex; justify-content: space-between; margin-bottom: 10px; align-items: center; }
+        .view-title { font-size: 16px; font-weight: bold; }
+
+        /* 网格容器 */
+        .grid-wrapper { background: var(--white); border: 1px solid var(--border); border-radius: 8px; overflow: auto; position: relative; flex: 1; display: flex; flex-direction: column; }
+        
+        /* 提示层 (错误/空状态) */
+        .overlay-msg { position: absolute; inset: 0; background: rgba(255,255,255,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; display: none; text-align: center; }
+        .overlay-msg p { color: var(--text-light); margin: 5px 0; }
+        .overlay-msg.show { display: flex; }
+
+        /* 周视图网格 */
+        #week-grid { display: grid; grid-template-columns: 60px repeat(7, minmax(120px, 1fr)); min-height: 100%; }
+        
+        .sticky-header { position: sticky; top: 0; background: #f9fafb; z-index: 5; border-bottom: 1px solid var(--border); border-left: 1px solid var(--border); padding: 8px; text-align: center; font-weight: 500; }
+        .sticky-time { position: sticky; left: 0; background: #f9fafb; z-index: 4; border-top: 1px solid var(--border); padding: 5px; font-size: 12px; text-align: right; color: var(--text-light); }
+        /* 左上角空白格 */
+        .sticky-header.sticky-time { z-index: 6; border: none; border-bottom: 1px solid var(--border); }
+
+        .cell { border-top: 1px solid var(--border); border-left: 1px solid var(--border); position: relative; height: 40px; }
+        .cell:hover { background: #f3f4f6; }
+        
+        /* 预约块 */
+        .booking-block {
+            position: absolute; margin: 2px; padding: 4px 6px; border-radius: 4px; 
+            color: white; font-size: 12px; cursor: pointer; overflow: hidden; 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2); z-index: 2;
+            left: 0; right: 0;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #log-console { margin-top: 10px; font-family: monospace; font-size: 12px; color: #666; max-height: 100px; overflow: auto; text-align: center; width: 80%; }
+        .booking-mine { background: var(--primary); border: 1px solid #1d4ed8; }
+        .booking-other { background: var(--yellow); border: 1px solid #ca8a04; color: #713f12; }
         
-        /* 隐藏内容直到加载完成 */
-        #app-content { opacity: 0; transition: opacity 0.5s; height: 100%; display: flex; flex-direction: column; }
+        /* 状态类 */
+        .slot-locked { background: #e5e7eb; background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, #d1d5db 10px, #d1d5db 20px); cursor: not-allowed; }
+        .dragging { background: rgba(37, 99, 235, 0.3); border-left: 3px solid var(--primary); }
+        .hidden { display: none !important; }
+
+        /* 月视图 */
+        #month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border); flex: 1; }
+        .month-cell { background: var(--white); min-height: 80px; padding: 5px; }
+        .month-head { background: #f9fafb; padding: 10px; text-align: center; font-weight: bold; }
+        .user-tag { display: inline-block; background: #dbeafe; color: #1e40af; font-size: 12px; padding: 1px 4px; border-radius: 3px; margin: 1px; }
+
+        /* 弹窗 */
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: center; justify-content: center; }
+        .modal { background: white; width: 90%; max-width: 400px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; }
+        .modal-header { padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
+        .modal-body { padding: 20px; }
+        .modal-footer { padding: 15px; background: #f9fafb; text-align: right; display: flex; justify-content: flex-end; gap: 10px; }
+        .close-btn { background: none; border: none; font-size: 20px; color: #999; cursor: pointer; }
+
+        /* 登录遮罩 */
+        #login-layer { position: fixed; inset: 0; background: #111827; z-index: 200; display: flex; align-items: center; justify-content: center; }
+        .login-box { background: white; padding: 30px; border-radius: 10px; width: 90%; max-width: 350px; text-align: center; }
         
-        /* 原生错误提示样式 */
-        .err-msg { color: #ef4444; margin-top: 5px; }
-        .success-msg { color: #10b981; }
+        /* 调试面板 */
+        #debug-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #333; color: #faaaaa; font-size: 12px; padding: 5px; display: none; z-index: 9999; max-height: 100px; overflow: auto; }
     </style>
 
-    <!-- 1. 智能资源加载器 -->
     <script>
-        const RES = {
-            tailwind: [
-                "https://lib.baomitu.com/tailwindcss/2.2.19/tailwind.min.js",
-                "https://cdn.staticfile.org/tailwindcss/2.2.19/tailwind.min.js",
-                "https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.js"
-            ],
-            dayjs: [
-                "https://lib.baomitu.com/dayjs/1.11.10/dayjs.min.js",
-                "https://cdn.staticfile.org/dayjs/1.11.10/dayjs.min.js",
-                "https://cdn.jsdelivr.net/npm/dayjs@1.11.10/dayjs.min.js"
-            ],
-            dayjs_iso: [
-                "https://lib.baomitu.com/dayjs/1.11.10/plugin/isoWeek.min.js",
-                "https://cdn.staticfile.org/dayjs/1.11.10/plugin/isoWeek.min.js"
-            ],
-            dayjs_utc: [
-                "https://lib.baomitu.com/dayjs/1.11.10/plugin/utc.min.js",
-                "https://cdn.staticfile.org/dayjs/1.11.10/plugin/utc.min.js"
-            ],
-            dayjs_tz: [
-                "https://lib.baomitu.com/dayjs/1.11.10/plugin/timezone.min.js",
-                "https://cdn.staticfile.org/dayjs/1.11.10/plugin/timezone.min.js"
-            ],
-            dayjs_wk: [
-                "https://lib.baomitu.com/dayjs/1.11.10/plugin/weekday.min.js",
-                "https://cdn.staticfile.org/dayjs/1.11.10/plugin/weekday.min.js"
-            ],
-            supabase: [
-                "https://npm.elemecdn.com/@supabase/supabase-js@2", 
-                "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
-            ]
+        // 全局错误捕获
+        window.onerror = function(msg, url, line) {
+            const bar = document.getElementById('debug-bar');
+            if(bar) {
+                bar.style.display = 'block';
+                bar.innerHTML += `❌ ${msg} (Line:${line}) <br>`;
+            }
         };
-
-        function log(msg, type='') {
-            const el = document.getElementById('log-console');
-            if(el) {
-                const span = document.createElement('div');
-                span.innerHTML = msg;
-                if(type === 'err') span.className = 'err-msg';
-                if(type === 'ok') span.className = 'success-msg';
-                el.appendChild(span);
-                el.scrollTop = el.scrollHeight;
-            }
-            console.log(msg.replace(/<[^>]+>/g, ''));
-        }
-
-        function loadScript(urls, name) {
-            return new Promise((resolve, reject) => {
-                let index = 0;
-                function tryNext() {
-                    if (index >= urls.length) {
-                        log(`❌ ${name} 所有源加载失败`, 'err');
-                        return reject(new Error(`${name} 加载失败`));
-                    }
-                    const url = urls[index];
-                    log(`正在尝试加载 ${name} (源${index+1})...`);
-                    
-                    const script = document.createElement('script');
-                    script.src = url;
-                    script.onload = () => {
-                        log(`✅ ${name} 加载成功`, 'ok');
-                        resolve();
-                    };
-                    script.onerror = () => {
-                        log(`⚠️ 源${index+1}超时，切换下一源...`);
-                        index++;
-                        script.remove();
-                        tryNext();
-                    };
-                    document.head.appendChild(script);
-                }
-                tryNext();
-            });
-        }
-
-        async function initResources() {
-            try {
-                // 1. 并行加载基础库
-                await Promise.all([
-                    loadScript(RES.tailwind, 'Tailwind CSS'),
-                    loadScript(RES.dayjs, 'Day.js Core'),
-                    loadScript(RES.supabase, 'Supabase SDK')
-                ]);
-
-                // 2. 串行加载插件 (必须在 Core 之后)
-                await loadScript(RES.dayjs_iso, 'Dayjs IsoWeek');
-                await loadScript(RES.dayjs_utc, 'Dayjs UTC');
-                await loadScript(RES.dayjs_tz, 'Dayjs Timezone');
-                await loadScript(RES.dayjs_wk, 'Dayjs Weekday');
-
-                // 3. 启动应用
-                log('🎉 资源就绪，启动系统...', 'ok');
-                setTimeout(() => {
-                    document.getElementById('init-layer').style.display = 'none';
-                    document.getElementById('app-content').style.opacity = '1';
-                    window.startAppMain(); // 调用主逻辑
-                }, 500);
-
-            } catch (e) {
-                log(`🔥 致命错误: ${e.message}`, 'err');
-                document.getElementById('loading-text').innerHTML = 
-                    '<span style="color:red">网络环境受限，资源加载失败</span><br>' +
-                    '<button onclick="location.reload()" style="margin-top:10px;padding:5px 10px;cursor:pointer">点击刷新重试</button>';
-            }
-        }
-
-        window.onload = initResources;
     </script>
-
-    <style>
-        /* Tailwind 补充样式 */
-        .sticky-header { position: sticky; top: 0; z-index: 10; }
-        .sticky-time { position: sticky; left: 0; z-index: 5; }
-        .sticky-header.sticky-time { z-index: 11; }
-        .dragging-select { @apply bg-blue-200 bg-opacity-50 border-l-4 border-blue-500; }
-        .slot-past { @apply bg-gray-50 bg-opacity-70 cursor-not-allowed; }
-        .slot-locked {
-            @apply bg-gray-200 cursor-not-allowed;
-            background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, #b0b0b01a 10px, #b0b0b01a 20px);
-        }
-        .btn-transition { transition: all 0.2s ease; }
-        #network-status { transition: transform 0.3s ease-in-out; transform: translateY(-100%); }
-        #network-status.visible { transform: translateY(0); }
-    </style>
 </head>
 <body>
 
-    <!-- 初始化层 -->
-    <div id="init-layer">
-        <div class="loader-ring"></div>
-        <div id="loading-text" style="margin-top:15px; font-weight:bold; color:#374151;">正在寻找最快线路...</div>
-        <div id="log-console"></div>
+    <!-- 调试条 -->
+    <div id="debug-bar"></div>
+
+    <!-- 登录层 -->
+    <div id="login-layer">
+        <div class="login-box">
+            <h2 style="margin-top:0; color:#333;">实验室预约</h2>
+            <p style="color:#666; font-size:14px;">请输入班级口令</p>
+            <form id="login-form" style="margin-top:20px;">
+                <input type="password" id="access-code" placeholder="口令..." style="width:100%; padding:10px; margin-bottom:15px;">
+                <button type="submit" class="btn-primary" style="width:100%; padding:10px;">进入系统</button>
+                <p id="login-error" style="color:red; font-size:12px; display:none; margin-top:10px;">口令错误</p>
+            </form>
+        </div>
     </div>
 
-    <!-- 应用主体 -->
-    <div id="app-content">
-        
-        <!-- 网络状态条 -->
-        <div id="network-status" class="absolute top-0 left-0 right-0 bg-red-500 text-white text-center text-sm py-1 z-[60] shadow-md">
-            ⚠️ 网络连接不稳定
-        </div>
-
-        <!-- 登录/口令遮罩 -->
-        <div id="login-overlay" class="fixed inset-0 bg-gray-900 z-[50] flex items-center justify-center p-4">
-            <div class="bg-white rounded-lg shadow-2xl w-full max-w-sm p-8 text-center">
-                <div class="mb-6">
-                    <h2 class="text-2xl font-bold text-gray-800 mt-4">实验室预约系统</h2>
-                    <p class="text-gray-500 text-sm mt-2">请输入班级口令</p>
-                </div>
-                <form id="login-form" class="space-y-4">
-                    <input type="password" id="access-code" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:border-blue-500 outline-none" placeholder="输入口令..." autofocus>
-                    <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">进入系统</button>
-                    <p id="login-error" class="text-red-500 text-sm hidden">口令错误</p>
-                </form>
+    <!-- 顶部导航 -->
+    <header>
+        <div class="header-left">
+            <div class="title">🔬 器材预约</div>
+            <div style="display:flex; gap:5px; align-items:center;">
+                <input id="username-inp" placeholder="姓名" style="width:80px;">
+                <button id="username-btn" class="btn-primary">确认</button>
             </div>
         </div>
+        <div class="header-right">
+            <select id="eq-select" style="width:120px;"></select>
+            <button id="admin-btn" class="btn-outline" style="display:none;" title="管理">⚙️</button>
+            <button id="refresh-btn" class="btn-outline" title="刷新数据">⟳</button>
+            <button id="view-btn" class="btn-primary">月视图</button>
+            <button id="today-btn" class="btn-outline">今天</button>
+            <button id="logout-btn" class="btn-danger" title="退出">退出</button>
+        </div>
+    </header>
 
-        <!-- 顶部栏 -->
-        <header class="bg-white shadow-md p-4 sticky top-0 z-30 flex-none">
-            <div class="container mx-auto flex flex-wrap items-center justify-between gap-4">
-                <div class="flex items-center gap-4">
-                    <h1 class="text-2xl font-bold text-blue-600">器材预约</h1>
-                    <div class="flex items-center gap-2">
-                        <label class="text-sm font-medium hidden sm:inline">用户名:</label>
-                        <input type="text" id="username-input" class="rounded border border-gray-300 px-2 py-1 text-sm w-24 sm:w-32" placeholder="姓名">
-                        <button id="username-confirm-btn" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">确认</button>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2 flex-wrap">
-                    <label class="text-sm font-medium hidden sm:inline">器材:</label>
-                    <select id="equipment-select" class="rounded border border-gray-300 px-2 py-1 text-sm w-32 sm:w-48"></select>
-                    <button id="manage-equipment-btn" class="admin-only hidden ml-1 text-sm bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">⚙️</button>
-                    <button id="refresh-btn" class="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded border ml-2">⟳</button>
-                </div>
-                <div class="flex items-center gap-2 ml-auto sm:ml-0">
-                    <button id="toggle-view-btn" class="admin-only hidden text-sm bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">月视图</button>
-                    <button id="today-btn" class="text-sm bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded">今天</button>
-                </div>
+    <!-- 主界面 -->
+    <main>
+        <div id="status-bar">
+            <span>当前器材: <b id="st-eq">--</b></span>
+            <span>当前用户: <b id="st-user">--</b></span>
+        </div>
+
+        <!-- 周视图 -->
+        <div id="week-view" style="display:flex; flex-direction:column; height:100%;">
+            <div class="view-controls">
+                <button id="w-prev" class="btn-outline">← 上周</button>
+                <span id="w-title" class="view-title">...</span>
+                <button id="w-next" class="btn-outline">下周 →</button>
             </div>
-        </header>
-
-        <!-- 主内容 -->
-        <main class="container mx-auto p-4 flex-grow flex flex-col overflow-hidden">
-            <!-- 状态栏 -->
-            <div id="status-bar" class="mb-4 bg-white p-3 rounded shadow-sm border-l-4 border-blue-500 flex justify-between items-center hidden flex-none">
-                <div class="font-bold text-sm text-gray-800">当前: <span id="lbl-equipment" class="text-blue-700">--</span></div>
-                <div class="text-sm text-gray-600">用户: <span id="lbl-username" class="font-bold bg-gray-100 px-2 py-1 rounded">--</span></div>
-            </div>
-
-            <!-- 周视图 -->
-            <div id="week-view-container" class="flex flex-col h-full overflow-hidden">
-                <div class="flex items-center justify-between mb-4 flex-none">
-                    <button id="prev-week-btn" class="text-sm bg-white border px-4 py-2 rounded shadow-sm">← 上周</button>
-                    <h2 id="week-title" class="text-lg sm:text-xl font-semibold text-gray-700"></h2>
-                    <button id="next-week-btn" class="text-sm bg-white border px-4 py-2 rounded shadow-sm">下周 →</button>
+            <div class="grid-wrapper">
+                <!-- 加载/错误提示 -->
+                <div id="msg-layer" class="overlay-msg">
+                    <div style="font-size:24px; margin-bottom:10px;">📡</div>
+                    <p id="msg-text">正在连接数据库...</p>
+                    <button id="retry-btn" class="btn-primary" style="display:none; margin-top:10px;">重试</button>
                 </div>
-                <div id="week-grid-container" class="bg-white shadow rounded-lg overflow-auto relative flex-grow border border-gray-200">
-                    <div id="data-loading" class="hidden absolute inset-0 bg-white z-20 flex items-center justify-center text-gray-500">数据同步中...</div>
-                    <div id="error-state" class="hidden absolute inset-0 bg-white z-20 flex flex-col items-center justify-center text-center p-4">
-                        <p class="text-red-500 font-bold mb-2">数据连接中断</p>
-                        <button onclick="window.appFetchData()" class="bg-blue-500 text-white px-6 py-2 rounded">重试</button>
-                    </div>
-                    <div id="empty-state" class="hidden absolute inset-0 bg-white z-10 flex flex-col items-center justify-center text-center p-4">
-                        <p class="text-lg font-medium text-gray-600">暂无器材</p>
-                        <p class="text-sm text-gray-500 mt-2">请输入 "admins" 并确认，然后点击 "⚙️" 添加设备</p>
-                    </div>
-                    <div id="week-grid" class="relative grid min-h-full" style="grid-template-columns: 50px repeat(7, minmax(100px, 1fr));"></div>
-                </div>
-            </div>
-
-            <!-- 月视图 -->
-            <div id="month-view-container" class="hidden flex-col h-full overflow-hidden">
-                <div class="flex items-center justify-between mb-4 flex-none">
-                    <button id="prev-month-btn" class="text-sm bg-white border px-4 py-2 rounded">← 上月</button>
-                    <h2 id="month-title" class="text-xl font-semibold text-gray-700"></h2>
-                    <button id="next-month-btn" class="text-sm bg-white border px-4 py-2 rounded">下月 →</button>
-                </div>
-                <div id="month-grid" class="bg-white shadow rounded-lg grid grid-cols-7 gap-px border border-gray-200 flex-grow overflow-auto"></div>
-            </div>
-        </main>
-
-        <!-- 弹窗 (预约) -->
-        <div id="booking-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
-                <div class="flex justify-between border-b p-4"><h3 class="text-lg font-semibold">预约</h3><button class="modal-close text-gray-400">&times;</button></div>
-                <div class="p-6 space-y-4">
-                    <div><strong class="text-sm">器材:</strong> <span id="bm-equip"></span></div>
-                    <div><strong class="text-sm">时间:</strong> <span id="bm-time"></span></div>
-                    <textarea id="bm-remarks" class="w-full border rounded px-3 py-2" rows="3" placeholder="备注..."></textarea>
-                </div>
-                <div class="bg-gray-50 flex justify-end gap-3 p-4 rounded-b-lg">
-                    <button class="modal-close bg-white border px-4 py-2 rounded text-sm">取消</button>
-                    <button id="bm-submit" class="bg-blue-600 text-white px-4 py-2 rounded text-sm">确认</button>
-                </div>
+                
+                <div id="week-grid"></div>
             </div>
         </div>
 
-        <!-- 弹窗 (详情) -->
-        <div id="details-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
-                <div class="flex justify-between border-b p-4"><h3 class="text-lg font-semibold">详情</h3><button class="modal-close text-gray-400">&times;</button></div>
-                <div class="p-6 space-y-4">
-                    <div><strong class="text-sm">预约人:</strong> <span id="dm-user"></span></div>
-                    <div><strong class="text-sm">时间:</strong> <span id="dm-time"></span></div>
-                    <textarea id="dm-remarks" class="w-full border rounded px-3 py-2" rows="3"></textarea>
-                    <p id="dm-hint" class="text-xs text-gray-500 hidden">只能编辑自己的预约</p>
-                </div>
-                <div class="bg-gray-50 flex justify-end gap-3 p-4 rounded-b-lg">
-                    <button id="dm-delete" class="btn-transition text-sm bg-red-100 text-red-700 border border-red-200 px-4 py-2 rounded hidden">取消预约</button>
-                    <button id="dm-save" class="btn-transition text-sm bg-blue-600 text-white px-4 py-2 rounded hidden">保存</button>
-                    <button class="modal-close bg-white border px-4 py-2 rounded text-sm">关闭</button>
-                </div>
+        <!-- 月视图 -->
+        <div id="month-view" class="hidden" style="flex-direction:column; height:100%;">
+            <div class="view-controls">
+                <button id="m-prev" class="btn-outline">← 上月</button>
+                <span id="m-title" class="view-title">...</span>
+                <button id="m-next" class="btn-outline">下月 →</button>
+            </div>
+            <div class="grid-wrapper">
+                <div id="month-grid"></div>
             </div>
         </div>
+    </main>
 
-        <!-- 弹窗 (管理) -->
-        <div id="equipment-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4 hidden">
-            <div class="bg-white rounded-lg shadow-xl w-full max-w-lg">
-                <div class="flex justify-between border-b p-4"><h3 class="text-lg font-semibold">管理</h3><button class="modal-close text-gray-400">&times;</button></div>
-                <div class="p-6">
-                    <div class="flex gap-2 mb-4">
-                        <input type="text" id="new-eq-name" class="flex-grow border rounded px-3 py-2" placeholder="新器材名称">
-                        <button id="add-eq-btn" class="bg-green-600 text-white px-4 py-2 rounded">添加</button>
-                    </div>
-                    <div class="max-h-64 overflow-y-auto border rounded"><table class="w-full"><tbody id="eq-list-tbody"></tbody></table></div>
-                </div>
-                <div class="bg-gray-50 flex justify-end p-4 rounded-b-lg"><button class="modal-close bg-blue-600 text-white px-4 py-2 rounded text-sm">完成</button></div>
+    <!-- 弹窗容器 -->
+    <div id="modal-overlay" class="modal-backdrop">
+        <div class="modal">
+            <div class="modal-header">
+                <span id="modal-title">标题</span>
+                <button class="close-btn" onclick="closeModal()">×</button>
             </div>
+            <div class="modal-body" id="modal-content"></div>
+            <div class="modal-footer" id="modal-actions"></div>
         </div>
-
-        <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2"></div>
     </div>
 
     <script>
-        // ================= 配置区域 =================
+        // ================= 配置 =================
         const SUPABASE_URL = 'https://ajbuygcpdpiyinttmwdo.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqYnV5Z2NwZHBpeWludHRtd2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NTUyMTYsImV4cCI6MjA3OTUzMTIxNn0.8_cko-69pwVXy-AzWlwwhLxFOV4hvTvkhJoxo9ng06o';
-        const CLASS_ACCESS_CODE = 'cxj123456'; 
-        // ==========================================
+        const CLASS_ACCESS_CODE = 'cxj123456';
+        // =======================================
 
-        // 主程序入口 (资源加载完成后调用)
-        window.startAppMain = function() {
+        let supabase;
+        let state = {
+            user: localStorage.getItem('lab-user') || '',
+            isAdmin: false,
+            date: null, // 稍后初始化
+            equipId: null,
+            equips: [], bookings: [], locks: [],
+            mode: 'week'
+        };
+
+        // DOM 缓存
+        const dom = {
+            login: document.getElementById('login-layer'),
+            msg: document.getElementById('msg-layer'),
+            msgText: document.getElementById('msg-text'),
+            retryBtn: document.getElementById('retry-btn'),
+            wkGrid: document.getElementById('week-grid'),
+            mnGrid: document.getElementById('month-grid'),
+            modal: document.getElementById('modal-overlay'),
+            mTitle: document.getElementById('modal-title'),
+            mBody: document.getElementById('modal-content'),
+            mFoot: document.getElementById('modal-actions'),
+            eqSel: document.getElementById('eq-select')
+        };
+
+        // --- 初始化流程 ---
+        window.onload = function() {
+            // 1. 检查库
+            if (typeof dayjs === 'undefined') return alert('核心库 Day.js 加载失败，请刷新。');
+            
+            // 2. 注册插件
             dayjs.extend(window.dayjs_plugin_isoWeek);
             dayjs.extend(window.dayjs_plugin_utc);
             dayjs.extend(window.dayjs_plugin_timezone);
             dayjs.extend(window.dayjs_plugin_weekday);
             dayjs.tz.setDefault(dayjs.tz.guess());
+            state.date = dayjs().startOf('day');
 
-            let supabase;
-            try { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } 
-            catch (e) { alert("数据库连接失败: " + e.message); return; }
-
-            // 登录逻辑
-            const loginOverlay = document.getElementById('login-overlay');
+            // 3. 检查登录
             if (localStorage.getItem('lab-auth') === 'true') {
-                loginOverlay.style.display = 'none';
-                initUI();
+                dom.login.style.display = 'none';
+                initApp();
             } else {
-                document.getElementById('login-form').addEventListener('submit', (e) => {
+                document.getElementById('login-form').onsubmit = (e) => {
                     e.preventDefault();
-                    const code = document.getElementById('access-code').value;
-                    if (code === CLASS_ACCESS_CODE) {
+                    if (document.getElementById('access-code').value === CLASS_ACCESS_CODE) {
                         localStorage.setItem('lab-auth', 'true');
-                        loginOverlay.style.display = 'none';
-                        initUI();
+                        dom.login.style.display = 'none';
+                        initApp();
                     } else {
-                        document.getElementById('login-error').classList.remove('hidden');
+                        document.getElementById('login-error').style.display = 'block';
                     }
-                });
+                };
+            }
+        };
+
+        function initApp() {
+            if (!window.supabase) return showMsg('Supabase 库加载失败', true);
+            try {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            } catch(e) {
+                return showMsg('数据库连接初始化失败: ' + e.message, true);
             }
 
-            // DOM 元素引用
-            const dom = {
-                weekGrid: document.getElementById('week-grid'),
-                monthGrid: document.getElementById('month-grid'),
-                eqSelect: document.getElementById('equipment-select'),
-                userInp: document.getElementById('username-input'),
-                toast: document.getElementById('toast-container'),
-                statusNet: document.getElementById('network-status'),
-                errState: document.getElementById('error-state'),
-                emptyState: document.getElementById('empty-state'),
-                dataLoad: document.getElementById('data-loading')
-            };
+            // 恢复 UI 状态
+            document.getElementById('username-inp').value = state.user;
+            checkAdmin();
+            
+            // 开始拉取数据
+            fetchEquipments();
+        }
 
-            let state = {
-                username: localStorage.getItem('lab-username') || '',
-                isAdmin: false,
-                date: dayjs().startOf('day'),
-                equipId: null,
-                equipmentList: [], bookings: [], lockedDates: [],
-                viewMode: 'week',
-                isDragging: false, dragStartSlot: null, draggedSlots: []
-            };
+        // --- 数据层 ---
+        async function fetchEquipments() {
+            showMsg('正在加载器材列表...');
+            const { data, error } = await supabase.from('equipment').select('*').order('name');
+            
+            if (error) return showMsg('加载失败: ' + error.message, true);
+            
+            state.equips = data || [];
+            dom.eqSel.innerHTML = '';
 
-            // 网络监听
-            window.addEventListener('online', () => { dom.statusNet.classList.remove('visible'); fetchEquipment(); });
-            window.addEventListener('offline', () => { dom.statusNet.classList.add('visible'); });
-
-            function initUI() {
-                dom.userInp.value = state.username;
-                checkAdmin();
-                fetchEquipment();
+            if (state.equips.length === 0) {
+                dom.eqSel.innerHTML = '<option>暂无器材</option>';
+                state.equipId = null;
+                showMsg('暂无器材数据<br>请在上方输入 "admins" 并确认，然后点击 ⚙️ 添加', false);
+                return;
             }
 
-            // 核心函数导出给全局调用
-            window.appFetchData = fetchData;
-
-            // --- 数据层 ---
-            async function fetchEquipment() {
-                dom.dataLoad.classList.remove('hidden');
-                dom.errState.classList.add('hidden');
-                dom.emptyState.classList.add('hidden');
-
-                try {
-                    const { data, error } = await supabase.from('equipment').select('*').order('name');
-                    if(error) throw error;
-
-                    state.equipmentList = data || [];
-                    dom.eqSelect.innerHTML = '';
-
-                    if(state.equipmentList.length === 0) {
-                        dom.eqSelect.innerHTML = '<option>无器材</option>';
-                        state.currentEquipId = null;
-                        dom.emptyState.classList.remove('hidden');
-                        dom.dataLoad.classList.add('hidden');
-                        return;
-                    }
-
-                    data.forEach(e => {
-                        const opt = document.createElement('option');
-                        opt.value = e.id; opt.textContent = e.name;
-                        dom.eqSelect.appendChild(opt);
-                    });
-
-                    if(state.currentEquipId && data.find(e => e.id == state.currentEquipId)) {
-                        dom.eqSelect.value = state.currentEquipId;
-                    } else {
-                        state.currentEquipId = data[0].id;
-                        dom.eqSelect.value = state.currentEquipId;
-                    }
-                    await fetchData();
-
-                } catch(e) {
-                    console.error(e);
-                    dom.dataLoad.classList.add('hidden');
-                    dom.errState.classList.remove('hidden');
-                    showToast('器材加载失败', 'error');
-                }
-            }
-
-            async function fetchData() {
-                if(!state.currentEquipId) return;
-                dom.dataLoad.classList.remove('hidden');
-                dom.errState.classList.add('hidden');
-                dom.weekGrid.style.display = 'grid';
-
-                try {
-                    const [bRes, lRes] = await Promise.all([
-                        supabase.from('bookings').select('*').eq('equipment_id', state.currentEquipId),
-                        supabase.from('locked_dates').select('lock_date').eq('equipment_id', state.currentEquipId)
-                    ]);
-
-                    if(bRes.error) throw bRes.error;
-                    if(lRes.error) throw lRes.error;
-
-                    state.bookings = (bRes.data || []).map(b => ({ ...b, start: dayjs(b.start_time), end: dayjs(b.end_time) }));
-                    state.lockedDates = (lRes.data || []).map(l => l.lock_date);
-                    
-                    updateStatusBar();
-                    renderView();
-                } catch(e) {
-                    console.error(e);
-                    dom.errState.classList.remove('hidden');
-                    showToast('数据同步失败', 'error');
-                } finally {
-                    dom.dataLoad.classList.add('hidden');
-                }
-            }
-
-            // --- 渲染层 ---
-            function renderView() { state.viewMode === 'week' ? renderWeek() : renderMonth(); }
-
-            function renderWeek() {
-                dom.weekGrid.innerHTML = '';
-                document.getElementById('week-view-container').classList.remove('hidden');
-                document.getElementById('month-view-container').classList.add('hidden');
-                document.getElementById('toggle-view-btn').textContent = '切换到月视图';
-                
-                const startOfWeek = state.date.weekday(0);
-                document.getElementById('week-title').textContent = `${startOfWeek.format('MM-DD')} 至 ${startOfWeek.add(6,'day').format('MM-DD')}`;
-                dom.weekGrid.style.gridTemplateRows = `auto repeat(24, 2.5rem)`;
-                dom.weekGrid.appendChild(createDiv('sticky-header sticky-time bg-gray-100 z-20', '')); 
-
-                for(let i=0; i<7; i++) {
-                    const d = startOfWeek.add(i, 'day');
-                    const dStr = d.format('YYYY-MM-DD');
-                    const isLocked = state.lockedDates.includes(dStr);
-                    const head = createDiv('sticky-header bg-gray-100 p-2 text-center border-b border-l', `<div>${d.format('MM/DD')} <span class="text-xs text-gray-500">${d.format('ddd')}</span></div>`);
-                    if(state.isAdmin) {
-                        const btn = document.createElement('button');
-                        btn.textContent = isLocked ? '🔒' : '🔓';
-                        btn.className = 'text-xs ml-1 cursor-pointer';
-                        btn.onclick = () => toggleLock(dStr, isLocked);
-                        head.firstChild.appendChild(btn);
-                    }
-                    dom.weekGrid.appendChild(head);
-                }
-
-                for(let h=0; h<24; h++) {
-                    dom.weekGrid.appendChild(createDiv('sticky-time p-1 text-xs text-right border-t bg-gray-50', `${h}:00`));
-                    for(let d=0; d<7; d++) {
-                        const date = startOfWeek.add(d, 'day');
-                        const cellTime = date.hour(h).minute(0).second(0);
-                        const isLocked = state.lockedDates.includes(date.format('YYYY-MM-DD'));
-                        const cell = createDiv(`relative border-t border-l hover:bg-gray-50 cursor-pointer ${isLocked?'slot-locked':''}`, '');
-                        cell.dataset.time = cellTime.toISOString();
-                        cell.dataset.col = d;
-                        if(!isLocked) { cell.onmousedown = handleDragStart; cell.onmouseenter = handleDragEnter; }
-                        dom.weekGrid.appendChild(cell);
-                    }
-                }
-
-                processBookings(state.bookings, startOfWeek, startOfWeek.add(7, 'day')).forEach(b => {
-                    const startH = b.start.hour();
-                    const duration = b.end.diff(b.start, 'hour');
-                    const col = b.start.diff(startOfWeek, 'day');
-                    if(col < 0 || col > 6) return;
-                    const isMine = b.user_id === state.username;
-                    const el = createDiv(`absolute m-px p-1 text-xs text-white rounded shadow cursor-pointer overflow-hidden ${isMine?'bg-blue-500':'bg-yellow-500'} z-10`, `
-                        <div class="font-bold">${isMine?'我':b.user_id}</div>
-                        <div class="truncate">${b.remarks||'无备注'}</div>
-                    `);
-                    el.style.gridColumn = col + 2;
-                    el.style.gridRow = `${startH + 2} / span ${duration}`;
-                    el.onclick = (e) => { e.stopPropagation(); openDetails(b); };
-                    dom.weekGrid.appendChild(el);
-                });
-            }
-
-            function renderMonth() {
-                dom.monthGrid.innerHTML = '';
-                document.getElementById('week-view-container').classList.add('hidden');
-                document.getElementById('month-view-container').classList.remove('hidden');
-                document.getElementById('toggle-view-btn').textContent = '切换到周视图';
-                const startMonth = state.date.startOf('month');
-                document.getElementById('month-title').textContent = startMonth.format('YYYY年MM月');
-                ['日','一','二','三','四','五','六'].forEach(t => dom.monthGrid.appendChild(createDiv('text-center bg-gray-50 p-2 font-bold', t)));
-                const startGrid = startMonth.weekday(0);
-                for(let i=0; i<42; i++) {
-                    const d = startGrid.add(i, 'day');
-                    const isCurr = d.month() === startMonth.month();
-                    const users = [...new Set(state.bookings.filter(b => b.start.format('YYYY-MM-DD') === d.format('YYYY-MM-DD')).map(b => b.user_id))];
-                    const cell = createDiv(`h-24 border p-1 ${isCurr?'bg-white':'bg-gray-50 text-gray-400'}`, `
-                        <div class="text-right text-sm font-bold">${d.date()}</div>
-                        <div class="overflow-y-auto max-h-16 text-xs mt-1 flex flex-wrap gap-1">${users.map(u => `<span class="bg-blue-100 text-blue-800 px-1 rounded text-xs">${u}</span>`).join('')}</div>
-                    `);
-                    dom.monthGrid.appendChild(cell);
-                }
-            }
-
-            // --- 逻辑处理 ---
-            const processBookings = (list, startLimit, endLimit) => {
-                const inRange = list.filter(b => b.end.isAfter(startLimit) && b.start.isBefore(endLimit));
-                const groups = {};
-                inRange.forEach(b => { const k = b.user_id + '_' + b.start.format('YYYY-MM-DD'); if(!groups[k]) groups[k] = []; groups[k].push(b); });
-                const res = [];
-                Object.values(groups).forEach(g => {
-                    g.sort((a,b) => a.start - b.start);
-                    let curr = null;
-                    g.forEach(b => {
-                        if(!curr) curr = { ...b, ids: [b.id] };
-                        else if(curr.end.isSame(b.start)) { curr.end = b.end; curr.ids.push(b.id); }
-                        else { res.push(curr); curr = { ...b, ids: [b.id] }; }
-                    });
-                    if(curr) res.push(curr);
-                });
-                return res;
-            };
-
-            const toggleLock = async (dateStr, isLocked) => {
-                const q = isLocked ? supabase.from('locked_dates').delete().eq('equipment_id', state.currentEquipId).eq('lock_date', dateStr) 
-                                   : supabase.from('locked_dates').insert({ equipment_id: state.currentEquipId, lock_date: dateStr });
-                await q; await fetchData();
-            };
-
-            // --- 交互 ---
-            const handleDragStart = (e) => { state.isDragging = true; state.dragStartSlot = e.target; state.draggedSlots = [e.target]; e.target.classList.add('dragging-select'); };
-            const handleDragEnter = (e) => {
-                if(!state.isDragging) return;
-                const t = e.target; if(t.dataset.col !== state.dragStartSlot.dataset.col) return; 
-                document.querySelectorAll('.dragging-select').forEach(el=>el.classList.remove('dragging-select'));
-                const allSlots = Array.from(document.querySelectorAll(`div[data-col="${t.dataset.col}"]`));
-                const idx1 = allSlots.indexOf(state.dragStartSlot), idx2 = allSlots.indexOf(t);
-                const [min, max] = idx1 < idx2 ? [idx1, idx2] : [idx2, idx1];
-                state.draggedSlots = []; let valid = true;
-                for(let i=min; i<=max; i++) {
-                    if(all[i].classList.contains('slot-locked')) { valid = false; break; }
-                    all[i].classList.add('dragging-select'); state.draggedSlots.push(all[i]);
-                }
-                if(!valid) state.draggedSlots.forEach(el=>el.classList.remove('dragging-select'));
-            };
-            document.onmouseup = () => {
-                if(!state.isDragging) return;
-                state.isDragging = false;
-                if(state.draggedSlots.length) openBooking(state.draggedSlots);
-                setTimeout(() => document.querySelectorAll('.dragging-select').forEach(el=>el.classList.remove('dragging-select')), 100);
-            };
-
-            const openBooking = (slots) => {
-                if(!state.username || state.username === 'admins') return showToast('请先输入有效用户名（非 admins）', 'error');
-                pendingSlots = slots.map(s => dayjs(s.dataset.time)).sort((a,b) => a-b);
-                const sTime = pendingSlots[0];
-                const eTime = pendingSlots[pendingSlots.length-1].add(1, 'hour');
-                document.getElementById('bm-equip').textContent = dom.eqSelect.options[dom.eqSelect.selectedIndex].text;
-                document.getElementById('bm-time').textContent = `${sTime.format('MM-DD HH:mm')} - ${eTime.format('HH:mm')}`;
-                document.getElementById('bm-remarks').value = '';
-                dom.bookingModal.classList.remove('hidden');
-            };
-
-            // 弹窗逻辑
-            document.getElementById('bm-submit').onclick = async () => {
-                const remarks = document.getElementById('bm-remarks').value;
-                dom.bookingModal.classList.add('hidden');
-                const toInsert = pendingSlots.map(t => ({ equipment_id: state.currentEquipId, user_id: state.username, remarks, start_time: t.toISOString(), end_time: t.add(1, 'hour').toISOString() }));
-                const { error } = await supabase.from('bookings').insert(toInsert);
-                if(error) showToast('预约失败', 'error'); else { showToast('预约成功', 'success'); fetchData(); }
-            };
-
-            let deleteConfirmState = false;
-            let currentDetailBlock = null;
-
-            const openDetails = (block) => {
-                currentDetailBlock = block;
-                const isMine = block.user_id === state.username;
-                const canEdit = isMine || state.isAdmin;
-                deleteConfirmState = false;
-                document.getElementById('dm-delete').textContent = "取消预约";
-                document.getElementById('dm-delete').className = "btn-transition text-sm bg-red-100 text-red-700 border border-red-200 px-4 py-2 rounded hidden";
-                document.getElementById('dm-user').textContent = block.user_id;
-                document.getElementById('dm-time').textContent = `${block.start.format('MM-DD HH:mm')} - ${block.end.format('HH:mm')}`;
-                const remarksEl = document.getElementById('dm-remarks');
-                remarksEl.value = block.remarks || '';
-                
-                const saveBtn = document.getElementById('dm-save'), delBtn = document.getElementById('dm-delete'), hint = document.getElementById('dm-hint');
-                if (canEdit) {
-                    remarksEl.disabled = false; saveBtn.classList.remove('hidden'); delBtn.classList.remove('hidden'); hint.classList.add('hidden');
-                } else {
-                    remarksEl.disabled = true; saveBtn.classList.add('hidden'); delBtn.classList.add('hidden'); hint.classList.remove('hidden');
-                }
-                dom.detailsModal.classList.remove('hidden');
-            };
-
-            document.getElementById('dm-save').onclick = async () => {
-                const newRemarks = document.getElementById('dm-remarks').value;
-                dom.detailsModal.classList.add('hidden');
-                await supabase.from('bookings').update({ remarks: newRemarks }).in('id', currentDetailBlock.ids);
-                showToast('已更新'); fetchData();
-            };
-
-            document.getElementById('dm-delete').onclick = async () => {
-                const delBtn = document.getElementById('dm-delete');
-                if (!deleteConfirmState) {
-                    deleteConfirmState = true; delBtn.textContent = "确认删除？"; delBtn.className = "btn-transition text-sm bg-red-600 text-white border border-red-600 px-4 py-2 rounded"; return;
-                }
-                dom.detailsModal.classList.add('hidden');
-                await supabase.from('bookings').delete().in('id', currentDetailBlock.ids);
-                showToast('已取消'); fetchData();
-            };
-
-            // 管理功能
-            document.getElementById('manage-equipment-btn').onclick = () => { dom.equipModal.classList.remove('hidden'); renderEquipList(); };
-            document.getElementById('add-eq-btn').onclick = async () => {
-                const name = document.getElementById('new-eq-name').value; if(!name) return;
-                await supabase.from('equipment').insert({ name });
-                document.getElementById('new-eq-name').value = ''; renderEquipList(); fetchEquipment(); 
-            };
-            const renderEquipList = async () => {
-                const { data } = await supabase.from('equipment').select('*').order('name');
-                const tbody = document.getElementById('eq-list-tbody'); tbody.innerHTML = '';
-                data.forEach(e => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `<td class="p-2 border-b">${e.name}</td><td class="p-2 border-b text-right"><button class="text-red-500" onclick="delEquip(${e.id})">删除</button></td>`;
-                    tbody.appendChild(tr);
-                });
-            };
-            window.delEquip = async (id) => {
-                if(!confirm('确定删除?')) return;
-                await supabase.from('equipment').delete().eq('id', id); renderEquipList(); fetchEquipment();
-            };
-
-            // 辅助 UI 更新
-            const showToast = (msg, type='info') => {
-                const div = document.createElement('div');
-                div.className = `px-4 py-3 rounded text-white shadow-lg ${type==='error'?'bg-red-500': type==='success'?'bg-green-500':'bg-blue-500'} transition-opacity duration-500`;
-                div.textContent = msg;
-                dom.toast.appendChild(div);
-                setTimeout(() => { div.classList.add('opacity-0'); setTimeout(() => div.remove(), 500); }, 3000);
-            };
-            const checkAdmin = () => {
-                state.isAdmin = state.username === 'admins';
-                document.querySelectorAll('.admin-only').forEach(el => el.style.display = state.isAdmin ? 'block' : 'none');
-            };
-            const updateStatusBar = () => {
-                if (state.currentEquipId) {
-                    const eq = state.equipmentList.find(e => e.id == state.currentEquipId);
-                    document.getElementById('lbl-equipment').textContent = eq ? eq.name : '未知';
-                    document.getElementById('status-bar').classList.remove('hidden');
-                } else document.getElementById('status-bar').classList.add('hidden');
-                document.getElementById('lbl-username').textContent = state.username || '未设置';
-            };
-
-            // 绑定事件
-            dom.userConfirmBtn.onclick = handleUserConfirm;
-            dom.eqSelect.onchange = (e) => { state.currentEquipId = e.target.value; fetchData(); };
-            document.getElementById('refresh-btn').onclick = () => { fetchEquipment(); showToast('刷新中...', 'info'); };
-            document.getElementById('today-btn').onclick = () => { state.date = dayjs(); fetchData(); };
-            document.getElementById('prev-week-btn').onclick = () => { state.date = state.date.subtract(1,'week'); fetchData(); };
-            document.getElementById('next-week-btn').onclick = () => { state.date = state.date.add(1,'week'); fetchData(); };
-            document.getElementById('prev-month-btn').onclick = () => { state.date = state.date.subtract(1,'month'); fetchData(); };
-            document.getElementById('next-month-btn').onclick = () => { state.date = state.date.add(1,'month'); fetchData(); };
-            document.getElementById('toggle-view-btn').onclick = () => {
-                state.viewMode = state.viewMode==='week'?'month':'week';
-                state.date = dayjs().startOf(state.viewMode==='week'?'day':'month');
-                fetchData();
-            };
-            document.querySelectorAll('.modal-close').forEach(b => b.onclick = () => {
-                dom.bookingModal.classList.add('hidden');
-                dom.detailsModal.classList.add('hidden');
-                dom.equipModal.classList.add('hidden');
+            state.equips.forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.id; opt.textContent = e.name;
+                dom.eqSel.appendChild(opt);
             });
-            const createDiv = (cls, html) => { const d=document.createElement('div'); d.className=cls; d.innerHTML=html; return d; };
+
+            // 恢复选择
+            if (state.equipId && state.equips.find(e => e.id == state.equipId)) {
+                dom.eqSel.value = state.equipId;
+            } else {
+                state.equipId = state.equips[0].id;
+                dom.eqSel.value = state.equipId;
+            }
+
+            fetchData();
+        }
+
+        async function fetchData() {
+            if (!state.equipId) return;
+            
+            // 只有在第一次或者手动刷新时显示 loading，避免闪烁
+            if(dom.wkGrid.innerHTML === '') showMsg('数据同步中...');
+            
+            const [bRes, lRes] = await Promise.all([
+                supabase.from('bookings').select('*').eq('equipment_id', state.equipId),
+                supabase.from('locked_dates').select('lock_date').eq('equipment_id', state.equipId)
+            ]);
+
+            if (bRes.error || lRes.error) return showMsg('数据同步失败，请检查网络', true);
+
+            state.bookings = (bRes.data || []).map(b => ({ ...b, start: dayjs(b.start_time), end: dayjs(b.end_time) }));
+            state.locks = (lRes.data || []).map(l => l.lock_date);
+
+            hideMsg();
+            updateStatus();
+            render();
+        }
+
+        // --- 渲染层 ---
+        function render() {
+            state.mode === 'week' ? renderWeek() : renderMonth();
+        }
+
+        function renderWeek() {
+            dom.wkGrid.innerHTML = '';
+            document.getElementById('week-view').style.display = 'flex';
+            document.getElementById('month-view').classList.add('hidden');
+            document.getElementById('week-title').textContent = state.date.format('YYYY-MM-DD');
+
+            // 1. 左上角空块
+            dom.wkGrid.appendChild(makeDiv('sticky-header sticky-time', ''));
+
+            // 2. 表头
+            const startWeek = state.date.weekday(0);
+            for (let i = 0; i < 7; i++) {
+                const d = startWeek.add(i, 'day');
+                const dStr = d.format('YYYY-MM-DD');
+                const isLocked = state.locks.includes(dStr);
+                const lockBtn = state.isAdmin ? `<span onclick="toggleLock('${dStr}', ${isLocked})" style="cursor:pointer;margin-left:5px;">${isLocked?'🔒':'🔓'}</span>` : (isLocked?'🔒':'');
+                dom.wkGrid.appendChild(makeDiv('sticky-header', `${d.format('MM/DD')} ${lockBtn}`));
+            }
+
+            // 3. 网格内容
+            for (let h = 0; h < 24; h++) {
+                // 时间列
+                dom.wkGrid.appendChild(makeDiv('sticky-time', `${h}:00`));
+                
+                for (let d = 0; d < 7; d++) {
+                    const date = startWeek.add(d, 'day');
+                    const dStr = date.format('YYYY-MM-DD');
+                    const isLocked = state.locks.includes(dStr);
+                    const timeIso = date.hour(h).minute(0).second(0).toISOString();
+                    
+                    const cell = makeDiv(`cell ${isLocked?'slot-locked':''}`, '');
+                    cell.dataset.time = timeIso;
+                    cell.dataset.col = d;
+                    
+                    if (!isLocked) {
+                        cell.onmousedown = handleDragStart;
+                        cell.onmouseenter = handleDragEnter;
+                    }
+                    dom.wkGrid.appendChild(cell);
+                }
+            }
+
+            // 4. 渲染预约块
+            state.bookings.forEach(b => {
+                if (b.start.isBefore(startWeek) || b.start.isAfter(startWeek.add(7, 'day'))) return;
+                
+                const col = b.start.diff(startWeek, 'day') + 2; // +2 offset
+                const startRow = b.start.hour() + 2;
+                const span = b.end.diff(b.start, 'hour');
+                
+                const isMine = b.user_id === state.user;
+                const div = makeDiv(`booking-block ${isMine?'booking-mine':'booking-other'}`, 
+                    `<strong>${isMine?'我':b.user_id}</strong><br>${b.remarks||''}`);
+                
+                div.style.gridColumn = col;
+                div.style.gridRow = `${startRow} / span ${span}`;
+                div.onclick = (e) => { e.stopPropagation(); showDetail(b); };
+                
+                dom.wkGrid.appendChild(div);
+            });
+        }
+
+        function renderMonth() {
+            dom.mnGrid.innerHTML = '';
+            document.getElementById('week-view').style.display = 'none';
+            document.getElementById('month-view').classList.remove('hidden');
+            document.getElementById('month-title').textContent = state.date.format('YYYY年MM月');
+
+            // 表头
+            ['日','一','二','三','四','五','六'].forEach(t => 
+                dom.mnGrid.appendChild(makeDiv('month-head', t))
+            );
+
+            const startMonth = state.date.startOf('month');
+            const startGrid = startMonth.weekday(0);
+
+            for(let i=0; i<42; i++) {
+                const d = startGrid.add(i, 'day');
+                const isCurr = d.month() === startMonth.month();
+                const users = [...new Set(state.bookings.filter(b => b.start.isSame(d, 'day')).map(b => b.user_id))];
+                
+                const html = `<div style="text-align:right;font-size:12px;font-weight:bold;">${d.date()}</div>
+                              <div>${users.map(u => `<span class="user-tag">${u}</span>`).join('')}</div>`;
+                
+                dom.mnGrid.appendChild(makeDiv(`month-cell ${isCurr?'':'bg-gray'}`, html));
+            }
+        }
+
+        // --- 交互逻辑 ---
+        let isDragging = false, startSlot = null, selectedSlots = [];
+
+        function handleDragStart(e) {
+            isDragging = true; startSlot = e.target; selectedSlots = [e.target];
+            e.target.classList.add('dragging');
+        }
+
+        function handleDragEnter(e) {
+            if (!isDragging || e.target.dataset.col !== startSlot.dataset.col) return;
+            // 重绘选中区域
+            document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+            selectedSlots = [];
+            
+            const colCells = Array.from(document.querySelectorAll(`[data-col="${startSlot.dataset.col}"]`));
+            const i1 = colCells.indexOf(startSlot);
+            const i2 = colCells.indexOf(e.target);
+            const [min, max] = i1 < i2 ? [i1, i2] : [i2, i1];
+            
+            let valid = true;
+            for(let i=min; i<=max; i++) {
+                if(colCells[i].classList.contains('slot-locked')) valid = false;
+                colCells[i].classList.add('dragging');
+                selectedSlots.push(colCells[i]);
+            }
+            if(!valid) {
+                selectedSlots.forEach(el => el.classList.remove('dragging'));
+                selectedSlots = [];
+            }
+        }
+
+        window.addEventListener('mouseup', () => {
+            if (!isDragging) return;
+            isDragging = false;
+            if (selectedSlots.length > 0) openBookingModal(selectedSlots);
+            setTimeout(() => document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging')), 100);
+        });
+
+        // --- 弹窗逻辑 ---
+        function showModal(title, bodyHtml, buttons) {
+            document.getElementById('modal-title').textContent = title;
+            dom.mBody.innerHTML = bodyHtml;
+            dom.mFoot.innerHTML = '';
+            buttons.forEach(btn => {
+                const b = document.createElement('button');
+                b.textContent = btn.text;
+                b.className = btn.cls || 'btn-outline';
+                b.onclick = btn.click;
+                dom.mFoot.appendChild(b);
+            });
+            dom.modal.style.display = 'flex';
+        }
+        
+        window.closeModal = () => dom.modal.style.display = 'none';
+
+        function openBookingModal(slots) {
+            if (!state.user || state.user === 'admins') return alert("请先设置有效的用户名");
+            
+            const times = slots.map(s => dayjs(s.dataset.time)).sort((a,b) => a - b);
+            const start = times[0];
+            const end = times[times.length-1].add(1, 'hour');
+            
+            showModal('新建预约', `
+                <p><strong>时间：</strong>${start.format('MM-DD HH:mm')} - ${end.format('HH:mm')}</p>
+                <textarea id="bk-note" style="width:100%;" rows="3" placeholder="备注..."></textarea>
+            `, [
+                { text: '取消', click: closeModal },
+                { text: '确认', cls: 'btn-primary', click: async () => {
+                    const note = document.getElementById('bk-note').value;
+                    const inserts = times.map(t => ({
+                        equipment_id: state.equipId,
+                        user_id: state.user,
+                        remarks: note,
+                        start_time: t.toISOString(),
+                        end_time: t.add(1, 'hour').toISOString()
+                    }));
+                    const { error } = await supabase.from('bookings').insert(inserts);
+                    if(error) alert('预约失败'); else { closeModal(); fetchData(); }
+                }}
+            ]);
+        }
+
+        function showDetail(b) {
+            const isMine = b.user_id === state.user;
+            const canEdit = isMine || state.isAdmin;
+            
+            let html = `<p><strong>用户：</strong>${b.user_id}</p>
+                        <p><strong>时间：</strong>${b.start.format('MM-DD HH:mm')}</p>
+                        <textarea id="dt-note" style="width:100%" rows="3" ${!canEdit?'disabled':''}>${b.remarks||''}</textarea>`;
+            
+            let btns = [{ text: '关闭', click: closeModal }];
+            
+            if(canEdit) {
+                btns.unshift({ text: '删除', cls: 'btn-danger', click: async () => {
+                    if(confirm('确定删除？')) {
+                        await supabase.from('bookings').delete().eq('id', b.id);
+                        closeModal(); fetchData();
+                    }
+                }});
+                btns.unshift({ text: '保存备注', cls: 'btn-primary', click: async () => {
+                    const note = document.getElementById('dt-note').value;
+                    await supabase.from('bookings').update({ remarks: note }).eq('id', b.id);
+                    closeModal(); fetchData();
+                }});
+            }
+            
+            showModal('预约详情', html, btns);
+        }
+
+        // --- 辅助 ---
+        function makeDiv(cls, html) {
+            const d = document.createElement('div');
+            d.className = cls; d.innerHTML = html;
+            return d;
+        }
+
+        function showMsg(text, isErr) {
+            dom.msg.className = 'overlay-msg show';
+            dom.msgText.innerHTML = text;
+            dom.retryBtn.style.display = isErr ? 'block' : 'none';
+        }
+        
+        function hideMsg() {
+            dom.msg.className = 'overlay-msg';
+        }
+
+        function checkAdmin() {
+            state.isAdmin = state.user === 'admins';
+            document.getElementById('admin-btn').style.display = state.isAdmin ? 'block' : 'none';
+        }
+
+        function updateStatus() {
+            const eq = state.equips.find(e => e.id == state.equipId);
+            document.getElementById('st-eq').textContent = eq ? eq.name : '--';
+            document.getElementById('st-user').textContent = state.user || '--';
+            document.getElementById('status-bar').style.display = 'flex';
+        }
+
+        window.toggleLock = async (d, isLocked) => {
+            if(isLocked) await supabase.from('locked_dates').delete().eq('equipment_id', state.equipId).eq('lock_date', d);
+            else await supabase.from('locked_dates').insert({ equipment_id: state.equipId, lock_date: d });
+            fetchData();
+        };
+
+        // 事件绑定
+        document.getElementById('username-btn').onclick = () => {
+            const v = document.getElementById('username-inp').value.trim();
+            if(!v) return alert('请输入姓名');
+            state.user = v;
+            localStorage.setItem('lab-user', v);
+            checkAdmin();
+            updateStatus();
+            // 重新渲染日历以更新颜色
+            render();
+            alert('用户名已更新');
+        };
+
+        document.getElementById('admin-btn').onclick = () => {
+            let html = `<div style="display:flex;gap:5px;margin-bottom:10px;">
+                <input id="new-eq" placeholder="新器材名" style="flex:1;">
+                <button class="btn-primary" onclick="addEq()">添加</button>
+            </div>
+            <div style="max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:4px;">
+                ${state.equips.map(e => `<div style="padding:8px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;">
+                    <span>${e.name}</span><span onclick="delEq(${e.id})" style="color:red;cursor:pointer;">删除</span>
+                </div>`).join('')}
+            </div>`;
+            
+            showModal('管理器材', html, [{ text: '完成', click: closeModal }]);
+        };
+
+        window.addEq = async () => {
+            const name = document.getElementById('new-eq').value;
+            if(!name) return;
+            await supabase.from('equipment').insert({ name });
+            fetchEquipments(); closeModal();
+        };
+        
+        window.delEq = async (id) => {
+            if(!confirm('确定删除？')) return;
+            await supabase.from('equipment').delete().eq('id', id);
+            fetchEquipments(); closeModal();
+        };
+
+        document.getElementById('retry-btn').onclick = () => location.reload();
+        document.getElementById('refresh-btn').onclick = fetchData;
+        dom.eqSel.onchange = (e) => { state.equipId = e.target.value; fetchData(); };
+        
+        document.getElementById('view-btn').onclick = () => {
+            state.mode = state.mode === 'week' ? 'month' : 'week';
+            document.getElementById('view-btn').textContent = state.mode === 'week' ? '月视图' : '周视图';
+            fetchData();
+        };
+        
+        document.getElementById('today-btn').onclick = () => { state.date = dayjs(); fetchData(); };
+        document.getElementById('w-prev').onclick = () => { state.date = state.date.subtract(1, 'week'); fetchData(); };
+        document.getElementById('w-next').onclick = () => { state.date = state.date.add(1, 'week'); fetchData(); };
+        document.getElementById('m-prev').onclick = () => { state.date = state.date.subtract(1, 'month'); fetchData(); };
+        document.getElementById('m-next').onclick = () => { state.date = state.date.add(1, 'month'); fetchData(); };
+        document.getElementById('logout-btn').onclick = () => {
+            localStorage.removeItem('lab-auth');
+            location.reload();
         };
     </script>
 </body>
