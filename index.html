@@ -5,18 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>实验室器材预约系统</title>
     
-    <!-- 1. Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 1. Tailwind CSS (更换为 360 CDN) -->
+    <script src="https://lib.baomitu.com/tailwindcss/2.2.19/tailwind.min.js"></script>
     
-    <!-- 2. Day.js (已切换为 BootCDN 源) -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.10/dayjs.min.js"></script>
-    <script src="https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.10/plugin/isoWeek.min.js"></script>
-    <script src="https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.10/plugin/utc.min.js"></script>
-    <script src="https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.10/plugin/timezone.min.js"></script>
-    <script src="https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.10/plugin/weekday.min.js"></script>
+    <!-- 2. Day.js (更换为 360 CDN) -->
+    <script src="https://lib.baomitu.com/dayjs/1.11.10/dayjs.min.js"></script>
+    <script src="https://lib.baomitu.com/dayjs/1.11.10/plugin/isoWeek.min.js"></script>
+    <script src="https://lib.baomitu.com/dayjs/1.11.10/plugin/utc.min.js"></script>
+    <script src="https://lib.baomitu.com/dayjs/1.11.10/plugin/timezone.min.js"></script>
+    <script src="https://lib.baomitu.com/dayjs/1.11.10/plugin/weekday.min.js"></script>
     
-    <!-- 3. Supabase JS -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- 3. Supabase JS (更换为 饿了么 CDN，国内极其稳定) -->
+    <script src="https://npm.elemecdn.com/@supabase/supabase-js@2"></script>
     
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
@@ -32,51 +32,54 @@
         }
         .btn-transition { transition: all 0.2s ease; }
         
+        /* 调试面板 */
+        #debug-console {
+            display: none;
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.9); color: #ff5555;
+            padding: 15px; font-family: monospace; font-size: 14px;
+            z-index: 9999; max-height: 300px; overflow-y: auto;
+            border-top: 2px solid #f00;
+        }
+        
         #network-status {
             transition: transform 0.3s ease-in-out;
             transform: translateY(-100%);
         }
-        #network-status.visible {
-            transform: translateY(0);
-        }
-
-        #debug-console {
-            display: none;
-            position: fixed;
-            bottom: 0; left: 0; right: 0;
-            background: rgba(0,0,0,0.9);
-            color: #ff5555;
-            padding: 10px;
-            font-family: monospace;
-            font-size: 12px;
-            z-index: 9999;
-            max-height: 200px;
-            overflow-y: auto;
-            border-top: 2px solid #f00;
-        }
+        #network-status.visible { transform: translateY(0); }
     </style>
 
-    <!-- 4. 错误捕获 -->
+    <!-- 4. 增强型错误捕获 -->
     <script>
         window.onerror = function(msg, url, line, col, error) {
             const debug = document.getElementById('debug-console');
             if(debug) {
                 debug.style.display = 'block';
-                debug.innerHTML += `[错误] ${msg} <br>`;
+                // 翻译常见错误
+                let cnMsg = msg;
+                if(msg.includes('dayjs')) cnMsg = "核心组件 Day.js 加载失败";
+                if(msg.includes('supabase')) cnMsg = "数据库组件 Supabase 加载失败";
                 
-                if (msg.includes('dayjs') || msg.includes('Dayjs')) {
-                    debug.innerHTML += `<strong style="color:yellow">Day.js 加载失败。建议尝试切换网络（如手机热点）。</strong><br>`;
-                }
-                if (msg.includes('supabase')) {
-                    debug.innerHTML += `<strong style="color:yellow">Supabase 加载失败。建议尝试切换网络。</strong><br>`;
-                }
+                debug.innerHTML += `
+                    <div class="mb-2 border-b border-gray-700 pb-2">
+                        <strong style="color:#ffaa00">⚠️ ${cnMsg}</strong><br>
+                        <span style="color:#888">源: ${url || '未知脚本'} (行: ${line})</span><br>
+                        <span style="color:#888">错误信息: ${msg}</span>
+                    </div>
+                `;
             }
         };
     </script>
 </head>
 <body class="bg-gray-100 text-gray-800 flex flex-col h-screen overflow-hidden">
 
-    <div id="debug-console"></div>
+    <!-- 错误控制台 -->
+    <div id="debug-console">
+        <div class="flex justify-between items-center mb-2">
+            <h3 class="text-white font-bold">系统诊断日志</h3>
+            <button onclick="window.location.reload()" class="bg-white text-black px-2 py-1 rounded text-xs">刷新重试</button>
+        </div>
+    </div>
 
     <div id="network-status" class="absolute top-0 left-0 right-0 bg-red-500 text-white text-center text-sm py-1 z-[60] shadow-md">
         ⚠️ 网络连接不稳定
@@ -104,7 +107,7 @@
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <span id="loading-text" class="mt-2 text-gray-600">连接中...</span>
+            <span id="loading-text" class="mt-2 text-gray-600">资源加载中...</span>
         </div>
     </div>
 
@@ -149,7 +152,8 @@
             </div>
             <div id="week-grid-container" class="bg-white shadow rounded-lg overflow-auto relative flex-grow border border-gray-200">
                 <div id="error-state" class="hidden absolute inset-0 bg-white z-20 flex flex-col items-center justify-center text-center p-4">
-                    <p class="text-red-500 font-bold mb-2">数据加载异常</p>
+                    <div class="text-4xl mb-2">📡</div>
+                    <p class="text-red-500 font-bold mb-2">网络或数据库异常</p>
                     <button id="retry-btn" class="bg-blue-500 text-white px-6 py-2 rounded">重新加载</button>
                 </div>
                 <div id="empty-state" class="hidden absolute inset-0 bg-white z-10 flex flex-col items-center justify-center text-center p-4">
@@ -220,26 +224,30 @@
     <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2"></div>
 
     <script>
-        // ================= 配置区域 =================
         const SUPABASE_URL = 'https://ajbuygcpdpiyinttmwdo.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqYnV5Z2NwZHBpeWludHRtd2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NTUyMTYsImV4cCI6MjA3OTUzMTIxNn0.8_cko-69pwVXy-AzWlwwhLxFOV4hvTvkhJoxo9ng06o';
         const CLASS_ACCESS_CODE = 'cxj123456';
-        // ==========================================
 
         document.addEventListener('DOMContentLoaded', () => {
             // 0. 库加载检查
             if (typeof dayjs === 'undefined') {
                 const debug = document.getElementById('debug-console');
-                if(debug) { debug.style.display = 'block'; debug.innerHTML += `[致命错误] Day.js 库未能加载。<br>`; }
-                alert("Day.js 加载失败，请检查网络连接。");
+                if(debug) { debug.style.display = 'block'; debug.innerHTML += `[严重错误] Day.js 加载失败。请检查网络。<br>`; }
+                alert("核心组件 Day.js 加载失败，请刷新页面或切换网络。");
                 return;
             }
 
-            dayjs.extend(window.dayjs_plugin_isoWeek);
-            dayjs.extend(window.dayjs_plugin_utc);
-            dayjs.extend(window.dayjs_plugin_timezone);
-            dayjs.extend(window.dayjs_plugin_weekday);
-            dayjs.tz.setDefault(dayjs.tz.guess());
+            // 注册插件
+            try {
+                dayjs.extend(window.dayjs_plugin_isoWeek);
+                dayjs.extend(window.dayjs_plugin_utc);
+                dayjs.extend(window.dayjs_plugin_timezone);
+                dayjs.extend(window.dayjs_plugin_weekday);
+                dayjs.tz.setDefault(dayjs.tz.guess());
+            } catch(e) {
+                console.error("Dayjs plugins error", e);
+                alert("日期插件初始化失败");
+            }
 
             let supabase;
             const loginOverlay = document.getElementById('login-overlay');
@@ -272,7 +280,12 @@
 
             // 3. 初始化应用
             function initApp() {
-                if (typeof window.supabase === 'undefined') { alert("Supabase 加载失败，请刷新。"); return; }
+                if (typeof window.supabase === 'undefined') {
+                    const debug = document.getElementById('debug-console');
+                    if(debug) { debug.style.display = 'block'; debug.innerHTML += `[严重错误] Supabase 加载失败。<br>`; }
+                    alert("Supabase 数据库组件加载失败，请刷新。"); 
+                    return; 
+                }
                 try { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } 
                 catch (err) { console.error("Supabase init error", err); return; }
                 dom.userInp.value = state.username;
@@ -631,8 +644,9 @@
                 dom.equipModal.classList.add('hidden');
             });
             const createDiv = (cls, html) => { const d=document.createElement('div'); d.className=cls; d.innerHTML=html; return d; };
+            
+            // 初始化由口令验证触发
         });
     </script>
 </body>
 </html>
-
