@@ -5,17 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>实验室器材预约系统</title>
     
-    <!-- 1. Tailwind CSS (通常国内访问尚可) -->
+    <!-- 1. Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 2. Day.js (已替换为国内 Staticfile 源，解决加载卡顿问题) -->
-    <script src="https://cdn.staticfile.net/dayjs/1.11.10/dayjs.min.js"></script>
-    <script src="https://cdn.staticfile.net/dayjs/1.11.10/plugin/isoWeek.min.js"></script>
-    <script src="https://cdn.staticfile.net/dayjs/1.11.10/plugin/utc.min.js"></script>
-    <script src="https://cdn.staticfile.net/dayjs/1.11.10/plugin/timezone.min.js"></script>
-    <script src="https://cdn.staticfile.net/dayjs/1.11.10/plugin/weekday.min.js"></script>
+    <!-- 2. Day.js (已切换为 BootCDN 源) -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.10/dayjs.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.10/plugin/isoWeek.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.10/plugin/utc.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.10/plugin/timezone.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.10/plugin/weekday.min.js"></script>
     
-    <!-- 3. Supabase JS (保留官方源，但在下方增加了加载失败检测) -->
+    <!-- 3. Supabase JS -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <style>
@@ -32,7 +32,6 @@
         }
         .btn-transition { transition: all 0.2s ease; }
         
-        /* 网络状态提示条 */
         #network-status {
             transition: transform 0.3s ease-in-out;
             transform: translateY(-100%);
@@ -41,7 +40,6 @@
             transform: translateY(0);
         }
 
-        /* 紧急调试面板 (仅在出错时显示) */
         #debug-console {
             display: none;
             position: fixed;
@@ -58,18 +56,19 @@
         }
     </style>
 
-    <!-- 4. 全局错误捕获 (防止白屏) -->
+    <!-- 4. 错误捕获 -->
     <script>
         window.onerror = function(msg, url, line, col, error) {
-            // 如果发生错误，显示调试面板
             const debug = document.getElementById('debug-console');
             if(debug) {
                 debug.style.display = 'block';
-                debug.innerHTML += `[系统错误] ${msg} <br>位置: ${line}:${col}<br><br>`;
+                debug.innerHTML += `[错误] ${msg} <br>`;
                 
-                // 特别检测 Supabase 加载失败
-                if (msg.includes('supabase') || msg.includes('Supabase')) {
-                    debug.innerHTML += `<strong style="color:yellow">警告：Supabase 库似乎加载失败。这通常是网络原因导致的 CDN 阻断。请尝试切换网络（如手机热点）或刷新页面。</strong><br><br>`;
+                if (msg.includes('dayjs') || msg.includes('Dayjs')) {
+                    debug.innerHTML += `<strong style="color:yellow">Day.js 加载失败。建议尝试切换网络（如手机热点）。</strong><br>`;
+                }
+                if (msg.includes('supabase')) {
+                    debug.innerHTML += `<strong style="color:yellow">Supabase 加载失败。建议尝试切换网络。</strong><br>`;
                 }
             }
         };
@@ -77,31 +76,28 @@
 </head>
 <body class="bg-gray-100 text-gray-800 flex flex-col h-screen overflow-hidden">
 
-    <!-- 调试控制台 -->
     <div id="debug-console"></div>
 
-    <!-- 网络断开提示条 -->
     <div id="network-status" class="absolute top-0 left-0 right-0 bg-red-500 text-white text-center text-sm py-1 z-[60] shadow-md">
-        ⚠️ 网络连接已断开，请检查您的网络设置
+        ⚠️ 网络连接不稳定
     </div>
 
-    <!-- 全局登录/口令遮罩 -->
+    <!-- 登录遮罩 -->
     <div id="login-overlay" class="fixed inset-0 bg-gray-900 z-[100] flex items-center justify-center p-4">
         <div class="bg-white rounded-lg shadow-2xl w-full max-w-sm p-8 text-center">
             <div class="mb-6">
-                <svg class="w-16 h-16 text-blue-600 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                 <h2 class="text-2xl font-bold text-gray-800 mt-4">实验室预约系统</h2>
-                <p class="text-gray-500 text-sm mt-2">请输入班级口令以进入</p>
+                <p class="text-gray-500 text-sm mt-2">请输入班级口令</p>
             </div>
             <form id="login-form" class="space-y-4">
                 <input type="password" id="access-code" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" placeholder="输入口令..." autofocus>
                 <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-md">进入系统</button>
-                <p id="login-error" class="text-red-500 text-sm hidden">口令错误，请重试</p>
+                <p id="login-error" class="text-red-500 text-sm hidden">口令错误</p>
             </form>
         </div>
     </div>
 
-    <!-- 加载遮罩 -->
+    <!-- 加载中 -->
     <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-75 z-50 flex items-center justify-center backdrop-blur-sm" style="display: none;">
         <div class="flex flex-col items-center">
             <svg class="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -116,145 +112,108 @@
     <header class="bg-white shadow-md p-4 sticky top-0 z-30 flex-none">
         <div class="container mx-auto flex flex-wrap items-center justify-between gap-4">
             <div class="flex items-center gap-4">
-                <h1 class="text-2xl font-bold text-blue-600 flex items-center gap-2">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-                    器材预约
-                </h1>
+                <h1 class="text-2xl font-bold text-blue-600">器材预约</h1>
                 <div class="flex items-center gap-2">
                     <label class="text-sm font-medium hidden sm:inline">用户名:</label>
                     <div class="flex items-center gap-1">
-                        <input type="text" id="username-input" class="rounded border border-gray-300 px-2 py-1 text-sm w-24 sm:w-32 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" placeholder="姓名">
-                        <button id="username-confirm-btn" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 whitespace-nowrap shadow-sm">确认</button>
+                        <input type="text" id="username-input" class="rounded border border-gray-300 px-2 py-1 text-sm w-24 sm:w-32" placeholder="姓名">
+                        <button id="username-confirm-btn" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">确认</button>
                     </div>
                 </div>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
                 <label class="text-sm font-medium hidden sm:inline">器材:</label>
-                <select id="equipment-select" class="rounded border border-gray-300 px-2 py-1 text-sm w-32 sm:w-48 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"></select>
-                <button id="manage-equipment-btn" class="admin-only hidden ml-1 text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded" title="管理器材">⚙️</button>
-                
-                <!-- 手动刷新按钮 -->
-                <button id="refresh-btn" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1 rounded border border-gray-300 ml-2 transition-colors" title="重新加载数据">
-                    ⟳
-                </button>
+                <select id="equipment-select" class="rounded border border-gray-300 px-2 py-1 text-sm w-32 sm:w-48"></select>
+                <button id="manage-equipment-btn" class="admin-only hidden ml-1 text-sm bg-gray-200 px-2 py-1 rounded">⚙️</button>
+                <button id="refresh-btn" class="text-sm bg-gray-100 px-3 py-1 rounded border ml-2">⟳</button>
             </div>
             <div class="flex items-center gap-2 ml-auto sm:ml-0">
-                <button id="toggle-view-btn" class="admin-only hidden text-sm bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">月视图</button>
-                <button id="today-btn" class="text-sm bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded">今天</button>
+                <button id="toggle-view-btn" class="admin-only hidden text-sm bg-blue-500 text-white px-3 py-1 rounded">月视图</button>
+                <button id="today-btn" class="text-sm bg-indigo-500 text-white px-3 py-1 rounded">今天</button>
             </div>
         </div>
     </header>
 
     <!-- 主内容 -->
     <main class="container mx-auto p-4 flex-grow flex flex-col overflow-hidden">
-        
-        <!-- 状态栏 -->
         <div id="status-bar" class="mb-4 bg-white p-3 rounded shadow-sm border-l-4 border-blue-500 flex justify-between items-center hidden flex-none">
-            <div class="font-bold text-sm sm:text-base text-gray-800 flex items-center gap-2">
-                <span class="text-blue-500">●</span> 当前器材: <span id="lbl-equipment" class="text-blue-700">--</span>
-            </div>
-            <div class="text-sm text-gray-600 flex items-center gap-2">
-                用户: <span id="lbl-username" class="font-bold text-gray-800 bg-gray-100 px-2 py-1 rounded">--</span>
-            </div>
+            <div class="font-bold text-sm text-gray-800">当前器材: <span id="lbl-equipment" class="text-blue-700">--</span></div>
+            <div class="text-sm text-gray-600">用户: <span id="lbl-username" class="font-bold bg-gray-100 px-2 py-1 rounded">--</span></div>
         </div>
 
-        <!-- 周视图容器 (Flex Grow) -->
         <div id="week-view-container" class="flex flex-col h-full overflow-hidden">
             <div class="flex items-center justify-between mb-4 flex-none">
-                <button id="prev-week-btn" class="flex items-center gap-1 text-sm bg-white border px-4 py-2 rounded shadow-sm hover:bg-gray-50">← 上周</button>
+                <button id="prev-week-btn" class="text-sm bg-white border px-4 py-2 rounded">← 上周</button>
                 <h2 id="week-title" class="text-lg sm:text-xl font-semibold text-gray-700"></h2>
-                <button id="next-week-btn" class="flex items-center gap-1 text-sm bg-white border px-4 py-2 rounded shadow-sm hover:bg-gray-50">下周 →</button>
+                <button id="next-week-btn" class="text-sm bg-white border px-4 py-2 rounded">下周 →</button>
             </div>
             <div id="week-grid-container" class="bg-white shadow rounded-lg overflow-auto relative flex-grow border border-gray-200">
-                <!-- 错误/空状态覆盖层 -->
                 <div id="error-state" class="hidden absolute inset-0 bg-white z-20 flex flex-col items-center justify-center text-center p-4">
-                    <div class="text-4xl mb-2">📡</div>
                     <p class="text-red-500 font-bold mb-2">数据加载异常</p>
-                    <p class="text-gray-500 text-sm mb-4 max-w-xs">网络连接超时或数据库未响应。请检查网络后重试。</p>
-                    <button id="retry-btn" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 shadow-sm transition-colors">重新加载</button>
+                    <button id="retry-btn" class="bg-blue-500 text-white px-6 py-2 rounded">重新加载</button>
                 </div>
-                <!-- 空数据提示 -->
                 <div id="empty-state" class="hidden absolute inset-0 bg-white z-10 flex flex-col items-center justify-center text-center p-4">
-                    <div class="text-4xl mb-2 opacity-30">📋</div>
                     <p class="text-lg font-medium text-gray-600">暂无器材</p>
-                    <p class="text-sm text-gray-500 mt-2">请输入 "admins" 并点击确认</p>
-                    <p class="text-sm text-gray-500">然后点击 "⚙️" 添加设备</p>
+                    <p class="text-sm text-gray-500 mt-2">请输入 "admins" 并确认，然后点击 "⚙️" 添加设备</p>
                 </div>
                 <div id="week-grid" class="relative grid min-h-full" style="grid-template-columns: 50px repeat(7, minmax(100px, 1fr));"></div>
             </div>
         </div>
 
-        <!-- 月视图容器 -->
         <div id="month-view-container" class="hidden flex-col h-full overflow-hidden">
             <div class="flex items-center justify-between mb-4 flex-none">
-                <button id="prev-month-btn" class="flex items-center gap-1 text-sm bg-white border px-4 py-2 rounded shadow-sm hover:bg-gray-50">← 上月</button>
+                <button id="prev-month-btn" class="text-sm bg-white border px-4 py-2 rounded">← 上月</button>
                 <h2 id="month-title" class="text-xl font-semibold text-gray-700"></h2>
-                <button id="next-month-btn" class="flex items-center gap-1 text-sm bg-white border px-4 py-2 rounded shadow-sm hover:bg-gray-50">下月 →</button>
+                <button id="next-month-btn" class="text-sm bg-white border px-4 py-2 rounded">下月 →</button>
             </div>
             <div id="month-grid" class="bg-white shadow rounded-lg grid grid-cols-7 gap-px border border-gray-200 flex-grow overflow-auto"></div>
         </div>
     </main>
 
-    <!-- 弹窗 1: 新建预约 -->
+    <!-- 弹窗组件 -->
     <div id="booking-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
-            <div class="flex items-center justify-between border-b p-4">
-                <h3 class="text-lg font-semibold">新建预约</h3>
-                <button class="modal-close text-gray-400 hover:text-gray-600">&times;</button>
-            </div>
+            <div class="flex justify-between border-b p-4"><h3 class="text-lg font-semibold">预约</h3><button class="modal-close text-gray-400">&times;</button></div>
             <div class="p-6 space-y-4">
-                <div><strong class="block text-sm text-gray-700">器材:</strong> <span id="bm-equip" class="text-gray-900"></span></div>
-                <div><strong class="block text-sm text-gray-700">时间:</strong> <span id="bm-time" class="text-gray-900"></span></div>
-                <div><label class="block text-sm text-gray-700">备注:</label><textarea id="bm-remarks" rows="3" class="w-full mt-1 border rounded px-3 py-2" placeholder="填写实验内容..."></textarea></div>
+                <div><strong class="text-sm">器材:</strong> <span id="bm-equip"></span></div>
+                <div><strong class="text-sm">时间:</strong> <span id="bm-time"></span></div>
+                <textarea id="bm-remarks" class="w-full border rounded px-3 py-2" rows="3" placeholder="备注..."></textarea>
             </div>
             <div class="bg-gray-50 flex justify-end gap-3 p-4 rounded-b-lg">
-                <button class="modal-close text-sm bg-white border px-4 py-2 rounded">取消</button>
-                <button id="bm-submit" class="text-sm bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">确认预约</button>
+                <button class="modal-close bg-white border px-4 py-2 rounded text-sm">取消</button>
+                <button id="bm-submit" class="bg-blue-600 text-white px-4 py-2 rounded text-sm">确认</button>
             </div>
         </div>
     </div>
 
-    <!-- 弹窗 2: 预约详情 -->
     <div id="details-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
-            <div class="flex items-center justify-between border-b p-4">
-                <h3 class="text-lg font-semibold">预约详情</h3>
-                <button class="modal-close text-gray-400 hover:text-gray-600">&times;</button>
-            </div>
+            <div class="flex justify-between border-b p-4"><h3 class="text-lg font-semibold">详情</h3><button class="modal-close text-gray-400">&times;</button></div>
             <div class="p-6 space-y-4">
-                <div><strong class="block text-sm text-gray-700">预约人:</strong> <span id="dm-user" class="text-gray-900"></span></div>
-                <div><strong class="block text-sm text-gray-700">时间:</strong> <span id="dm-time" class="text-gray-900"></span></div>
-                <div>
-                    <label class="block text-sm text-gray-700">备注:</label>
-                    <textarea id="dm-remarks" rows="3" class="w-full mt-1 border rounded px-3 py-2" placeholder="无备注"></textarea>
-                    <p id="dm-hint" class="text-xs text-gray-500 mt-1 hidden">只能编辑自己的预约备注。</p>
-                </div>
+                <div><strong class="text-sm">预约人:</strong> <span id="dm-user"></span></div>
+                <div><strong class="text-sm">时间:</strong> <span id="dm-time"></span></div>
+                <textarea id="dm-remarks" class="w-full border rounded px-3 py-2" rows="3"></textarea>
+                <p id="dm-hint" class="text-xs text-gray-500 hidden">只能编辑自己的预约</p>
             </div>
             <div class="bg-gray-50 flex justify-end gap-3 p-4 rounded-b-lg">
-                <button id="dm-delete" class="btn-transition text-sm bg-red-100 text-red-700 border border-red-200 px-4 py-2 rounded hover:bg-red-200 hidden">取消预约</button>
-                <button id="dm-save" class="btn-transition text-sm bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 hidden">保存备注</button>
-                <button class="modal-close text-sm bg-white border px-4 py-2 rounded">关闭</button>
+                <button id="dm-delete" class="btn-transition text-sm bg-red-100 text-red-700 border border-red-200 px-4 py-2 rounded hidden">取消预约</button>
+                <button id="dm-save" class="btn-transition text-sm bg-blue-600 text-white px-4 py-2 rounded hidden">保存</button>
+                <button class="modal-close bg-white border px-4 py-2 rounded text-sm">关闭</button>
             </div>
         </div>
     </div>
 
-    <!-- 弹窗 3: 管理器材 -->
     <div id="equipment-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4 hidden">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-lg">
-            <div class="flex items-center justify-between border-b p-4">
-                <h3 class="text-lg font-semibold">管理器材</h3>
-                <button class="modal-close text-gray-400 hover:text-gray-600">&times;</button>
-            </div>
+            <div class="flex justify-between border-b p-4"><h3 class="text-lg font-semibold">管理</h3><button class="modal-close text-gray-400">&times;</button></div>
             <div class="p-6">
                 <div class="flex gap-2 mb-4">
-                    <input type="text" id="new-eq-name" placeholder="新器材名称" class="flex-grow border rounded px-3 py-2">
-                    <button id="add-eq-btn" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">添加</button>
+                    <input type="text" id="new-eq-name" class="flex-grow border rounded px-3 py-2" placeholder="新器材名称">
+                    <button id="add-eq-btn" class="bg-green-600 text-white px-4 py-2 rounded">添加</button>
                 </div>
                 <div class="max-h-64 overflow-y-auto border rounded"><table class="w-full"><tbody id="eq-list-tbody"></tbody></table></div>
             </div>
-            <div class="bg-gray-50 flex justify-end p-4 rounded-b-lg">
-                <button class="modal-close bg-blue-600 text-white px-4 py-2 rounded text-sm">完成</button>
-            </div>
+            <div class="bg-gray-50 flex justify-end p-4 rounded-b-lg"><button class="modal-close bg-blue-600 text-white px-4 py-2 rounded text-sm">完成</button></div>
         </div>
     </div>
 
@@ -264,23 +223,18 @@
         // ================= 配置区域 =================
         const SUPABASE_URL = 'https://ajbuygcpdpiyinttmwdo.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqYnV5Z2NwZHBpeWludHRtd2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NTUyMTYsImV4cCI6MjA3OTUzMTIxNn0.8_cko-69pwVXy-AzWlwwhLxFOV4hvTvkhJoxo9ng06o';
-        const CLASS_ACCESS_CODE = '123456'; 
+        const CLASS_ACCESS_CODE = '123456';
         // ==========================================
 
-        // 等待库加载检查
         document.addEventListener('DOMContentLoaded', () => {
-            // 检查 Day.js 是否加载成功
+            // 0. 库加载检查
             if (typeof dayjs === 'undefined') {
                 const debug = document.getElementById('debug-console');
-                if(debug) {
-                    debug.style.display = 'block';
-                    debug.innerHTML += `[严重错误] Day.js 库未能加载。请检查网络连接。<br>`;
-                }
-                alert("系统组件加载失败（Day.js），请尝试刷新页面。");
+                if(debug) { debug.style.display = 'block'; debug.innerHTML += `[致命错误] Day.js 库未能加载。<br>`; }
+                alert("Day.js 加载失败，请检查网络连接。");
                 return;
             }
 
-            // 注册插件 (Staticfile 的插件结构通常是 window.dayjs_plugin_xxx)
             dayjs.extend(window.dayjs_plugin_isoWeek);
             dayjs.extend(window.dayjs_plugin_utc);
             dayjs.extend(window.dayjs_plugin_timezone);
@@ -288,14 +242,13 @@
             dayjs.tz.setDefault(dayjs.tz.guess());
 
             let supabase;
-            
-            // 1. 登录逻辑
             const loginOverlay = document.getElementById('login-overlay');
             const loginForm = document.getElementById('login-form');
             const accessCodeInput = document.getElementById('access-code');
             const loginError = document.getElementById('login-error');
             const networkStatus = document.getElementById('network-status');
 
+            // 1. 登录逻辑
             if (localStorage.getItem('lab-auth') === 'true') {
                 loginOverlay.style.display = 'none';
                 initApp();
@@ -313,38 +266,15 @@
                 });
             }
 
-            // 2. 网络监听
-            window.addEventListener('online', () => {
-                networkStatus.classList.remove('visible');
-                showToast('网络已恢复，正在刷新...', 'success');
-                if(state.currentEquipId) fetchData(); 
-            });
-            window.addEventListener('offline', () => {
-                networkStatus.classList.add('visible');
-                showToast('网络已断开', 'error');
-            });
+            // 2. 网络状态
+            window.addEventListener('online', () => { networkStatus.classList.remove('visible'); if(state.currentEquipId) fetchData(); });
+            window.addEventListener('offline', () => { networkStatus.classList.add('visible'); });
 
-            // 3. 初始化
+            // 3. 初始化应用
             function initApp() {
-                if (typeof window.supabase === 'undefined') {
-                    const debug = document.getElementById('debug-console');
-                    if(debug) {
-                        debug.style.display = 'block';
-                        debug.innerHTML += `[严重错误] Supabase 库未能加载。<br>`;
-                    }
-                    alert("系统组件加载失败（Supabase），请尝试刷新页面。");
-                    return;
-                }
-
-                if (!SUPABASE_URL || !SUPABASE_KEY) { showToast("错误：请配置 Supabase", 'error'); return; }
-                
-                try { 
-                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); 
-                } catch (err) { 
-                    console.error("Supabase init error", err); 
-                    return; 
-                }
-                
+                if (typeof window.supabase === 'undefined') { alert("Supabase 加载失败，请刷新。"); return; }
+                try { supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } 
+                catch (err) { console.error("Supabase init error", err); return; }
                 dom.userInp.value = state.username;
                 checkAdmin();
                 fetchEquipment();
@@ -355,13 +285,8 @@
                 isAdmin: false,
                 currentDate: dayjs().startOf('day'),
                 currentEquipId: null,
-                equipmentList: [],
-                bookings: [],
-                lockedDates: [],
-                viewMode: 'week',
-                isDragging: false,
-                dragStartSlot: null,
-                draggedSlots: []
+                equipmentList: [], bookings: [], lockedDates: [],
+                viewMode: 'week', isDragging: false, dragStartSlot: null, draggedSlots: []
             };
 
             const dom = {
@@ -383,9 +308,7 @@
                 retryBtn: document.getElementById('retry-btn')
             };
 
-            let pendingSlots = [];
-            let currentDetailBlock = null; 
-            let deleteConfirmState = false; 
+            let pendingSlots = [], currentDetailBlock = null, deleteConfirmState = false;
 
             // --- 辅助函数 ---
             const showToast = (msg, type='info') => {
@@ -416,72 +339,51 @@
                 checkAdmin(); renderView(); updateStatusBar(); 
                 showToast(`用户名已更新: ${state.username}`);
             };
+            const timeoutPromise = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('请求超时')), ms));
 
-            // --- 超时 Promise 包装 ---
-            const timeoutPromise = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('请求超时，网络可能不稳定')), ms));
-
-            // --- 获取器材列表 ---
+            // --- 数据逻辑 ---
             const fetchEquipment = async () => {
                 toggleLoad(true);
                 dom.errorState.classList.add('hidden');
                 dom.emptyState.classList.add('hidden');
-                
                 try {
-                    // 10秒超时限制
                     const { data, error } = await Promise.race([
                         supabase.from('equipment').select('*').order('name'),
                         timeoutPromise(10000)
                     ]);
-                    
                     if(error) throw error;
-                    
                     state.equipmentList = data || [];
                     dom.eqSelect.innerHTML = '';
-                    
                     if(state.equipmentList.length === 0) {
                         dom.eqSelect.innerHTML = '<option>暂无器材</option>';
                         state.currentEquipId = null;
-                        dom.emptyState.classList.remove('hidden'); // 显示空状态
+                        dom.emptyState.classList.remove('hidden');
                         toggleLoad(false);
                         return;
                     }
-                    
                     data.forEach(e => {
                         const opt = document.createElement('option');
                         opt.value = e.id; opt.textContent = e.name;
                         dom.eqSelect.appendChild(opt);
                     });
-                    
-                    // 智能选择
-                    if(state.currentEquipId && data.find(e => e.id == state.currentEquipId)) {
-                        dom.eqSelect.value = state.currentEquipId;
-                    } else {
-                        state.currentEquipId = data[0].id;
-                        dom.eqSelect.value = state.currentEquipId;
-                    }
-                    
-                    await fetchData(); // 继续加载数据
-
+                    if(state.currentEquipId && data.find(e => e.id == state.currentEquipId)) dom.eqSelect.value = state.currentEquipId;
+                    else { state.currentEquipId = data[0].id; dom.eqSelect.value = state.currentEquipId; }
+                    await fetchData();
                 } catch (err) {
-                    console.error("Fetch Equipment Error:", err);
+                    console.error(err);
                     showToast(err.message, 'error');
                     toggleLoad(false);
-                    dom.errorState.classList.remove('hidden'); // 显示错误重试
+                    dom.errorState.classList.remove('hidden');
                 }
             };
 
-            // --- 并行获取预约数据 ---
             const fetchData = async () => {
                 if(!state.currentEquipId) { toggleLoad(false); return; }
-                
-                // 清理状态层
                 dom.errorState.classList.add('hidden');
                 dom.emptyState.classList.add('hidden');
                 dom.weekGrid.style.display = 'grid';
                 dom.monthGrid.style.display = 'grid';
-
                 try {
-                    // 并行请求 + 超时保护
                     const [bookingsResult, lockedDatesResult] = await Promise.race([
                         Promise.all([
                             supabase.from('bookings').select('*').eq('equipment_id', state.currentEquipId),
@@ -489,23 +391,17 @@
                         ]),
                         timeoutPromise(10000)
                     ]);
-
                     if(bookingsResult.error) throw bookingsResult.error;
                     if(lockedDatesResult.error) throw lockedDatesResult.error;
-
                     state.bookings = (bookingsResult.data || []).map(b => ({ ...b, start: dayjs(b.start_time), end: dayjs(b.end_time) }));
                     state.lockedDates = (lockedDatesResult.data || []).map(l => l.lock_date);
-                    
                     updateStatusBar();
                     renderView();
-                    
-                } catch (err) {
-                    console.error("Fetch Data Error:", err);
-                    showToast('数据同步失败: ' + err.message, 'error');
+                } catch(err) {
+                    console.error(err);
+                    showToast('同步失败: ' + err.message, 'error');
                     dom.errorState.classList.remove('hidden');
-                } finally {
-                    toggleLoad(false);
-                }
+                } finally { toggleLoad(false); }
             };
 
             const renderView = () => state.viewMode === 'week' ? renderWeek() : renderMonth();
@@ -515,12 +411,10 @@
                 document.getElementById('week-view-container').classList.remove('hidden');
                 document.getElementById('month-view-container').classList.add('hidden');
                 document.getElementById('toggle-view-btn').textContent = '切换到月视图';
-
                 const startOfWeek = state.currentDate.weekday(0);
                 document.getElementById('week-title').textContent = `${startOfWeek.format('MM-DD')} 至 ${startOfWeek.add(6,'day').format('MM-DD')}`;
                 dom.weekGrid.style.gridTemplateRows = `auto repeat(24, 2.5rem)`;
                 dom.weekGrid.appendChild(createDiv('sticky-header sticky-time bg-gray-100 z-20', '')); 
-
                 for(let i=0; i<7; i++) {
                     const d = startOfWeek.add(i, 'day');
                     const dStr = d.format('YYYY-MM-DD');
@@ -535,7 +429,6 @@
                     }
                     dom.weekGrid.appendChild(head);
                 }
-
                 for(let h=0; h<24; h++) {
                     const timeCol = createDiv('sticky-time bg-gray-100 text-xs text-right p-1 border-t', `${h}:00`);
                     timeCol.style.gridRow = h+2; timeCol.style.gridColumn = 1;
@@ -548,25 +441,18 @@
                         cell.style.gridRow = h+2; cell.style.gridColumn = d+2;
                         cell.dataset.time = cellTime.toISOString();
                         cell.dataset.col = d;
-                        if(!isLocked) {
-                            cell.onmousedown = handleDragStart;
-                            cell.onmouseenter = handleDragEnter;
-                        }
+                        if(!isLocked) { cell.onmousedown = handleDragStart; cell.onmouseenter = handleDragEnter; }
                         dom.weekGrid.appendChild(cell);
                     }
                 }
-
-                const processed = processBookings(state.bookings, startOfWeek, startOfWeek.add(7, 'day'));
-                processed.forEach(b => {
+                processBookings(state.bookings, startOfWeek, startOfWeek.add(7, 'day')).forEach(b => {
                     const startH = b.start.hour();
                     const duration = b.end.diff(b.start, 'hour');
                     const col = b.start.diff(startOfWeek, 'day');
                     if(col < 0 || col > 6) return;
                     const isMine = b.user_id === state.username;
                     const el = createDiv(`relative m-px p-1 text-xs text-white rounded shadow cursor-pointer overflow-hidden ${isMine?'bg-blue-500':'bg-yellow-500'}`, `
-                        <div class="font-bold">${isMine?'我':b.user_id}</div>
-                        <div>${b.start.format('HH:mm')}-${b.end.format('HH:mm')}</div>
-                        <div class="truncate">${b.remarks||''}</div>
+                        <div class="font-bold">${isMine?'我':b.user_id}</div><div>${b.start.format('HH:mm')}-${b.end.format('HH:mm')}</div><div class="truncate">${b.remarks||''}</div>
                     `);
                     el.style.gridRow = `${startH+2} / span ${duration}`;
                     el.style.gridColumn = col+2;
@@ -589,8 +475,7 @@
                     const isCurr = d.month() === startMonth.month();
                     const users = [...new Set(state.bookings.filter(b => b.start.format('YYYY-MM-DD') === d.format('YYYY-MM-DD')).map(b => b.user_id))];
                     const cell = createDiv(`h-24 border p-1 ${isCurr?'bg-white':'bg-gray-50 text-gray-400'}`, `
-                        <div class="text-right text-sm font-bold">${d.date()}</div>
-                        <div class="overflow-y-auto max-h-16 text-xs mt-1">${users.map(u => `<span class="bg-blue-100 text-blue-800 px-1 rounded mr-1 inline-block mb-1">${u}</span>`).join('')}</div>
+                        <div class="text-right text-sm font-bold">${d.date()}</div><div class="overflow-y-auto max-h-16 text-xs mt-1">${users.map(u => `<span class="bg-blue-100 text-blue-800 px-1 rounded mr-1 inline-block mb-1">${u}</span>`).join('')}</div>
                     `);
                     dom.monthGrid.appendChild(cell);
                 }
@@ -599,11 +484,7 @@
             const processBookings = (list, startLimit, endLimit) => {
                 const inRange = list.filter(b => b.end.isAfter(startLimit) && b.start.isBefore(endLimit));
                 const groups = {};
-                inRange.forEach(b => {
-                    const k = b.user_id + '_' + b.start.format('YYYY-MM-DD');
-                    if(!groups[k]) groups[k] = [];
-                    groups[k].push(b);
-                });
+                inRange.forEach(b => { const k = b.user_id + '_' + b.start.format('YYYY-MM-DD'); if(!groups[k]) groups[k] = []; groups[k].push(b); });
                 const res = [];
                 Object.values(groups).forEach(g => {
                     g.sort((a,b) => a.start - b.start);
@@ -620,18 +501,14 @@
 
             const toggleLock = async (dateStr, isLocked) => {
                 toggleLoad(true);
-                const q = isLocked ? supabase.from('locked_dates').delete().eq('equipment_id', state.currentEquipId).eq('lock_date', dateStr) 
-                                   : supabase.from('locked_dates').insert({ equipment_id: state.currentEquipId, lock_date: dateStr });
+                const q = isLocked ? supabase.from('locked_dates').delete().eq('equipment_id', state.currentEquipId).eq('lock_date', dateStr) : supabase.from('locked_dates').insert({ equipment_id: state.currentEquipId, lock_date: dateStr });
                 await q; await fetchData();
             };
 
-            const handleDragStart = (e) => {
-                state.isDragging = true; state.dragStartSlot = e.target; state.draggedSlots = [e.target]; e.target.classList.add('dragging-select');
-            };
+            const handleDragStart = (e) => { state.isDragging = true; state.dragStartSlot = e.target; state.draggedSlots = [e.target]; e.target.classList.add('dragging-select'); };
             const handleDragEnter = (e) => {
                 if(!state.isDragging) return;
-                const t = e.target;
-                if(t.dataset.col !== state.dragStartSlot.dataset.col) return; 
+                const t = e.target; if(t.dataset.col !== state.dragStartSlot.dataset.col) return; 
                 document.querySelectorAll('.dragging-select').forEach(el=>el.classList.remove('dragging-select'));
                 const allSlots = Array.from(document.querySelectorAll(`div[data-col="${t.dataset.col}"]`));
                 const idx1 = allSlots.indexOf(state.dragStartSlot), idx2 = allSlots.indexOf(t);
@@ -640,8 +517,7 @@
                 for(let i=start; i<=end; i++) {
                     const slot = allSlots[i];
                     if(slot.classList.contains('slot-locked')) { valid = false; break; }
-                    slot.classList.add('dragging-select');
-                    state.draggedSlots.push(slot);
+                    slot.classList.add('dragging-select'); state.draggedSlots.push(slot);
                 }
                 if(!valid) state.draggedSlots.forEach(el=>el.classList.remove('dragging-select'));
             };
@@ -665,8 +541,7 @@
 
             document.getElementById('bm-submit').onclick = async () => {
                 const remarks = document.getElementById('bm-remarks').value;
-                toggleLoad(true);
-                dom.bookingModal.classList.add('hidden');
+                toggleLoad(true); dom.bookingModal.classList.add('hidden');
                 const toInsert = pendingSlots.map(t => ({ equipment_id: state.currentEquipId, user_id: state.username, remarks, start_time: t.toISOString(), end_time: t.add(1, 'hour').toISOString() }));
                 const { error } = await supabase.from('bookings').insert(toInsert);
                 if(error) showToast('预约失败: ' + error.message, 'error'); else showToast('预约成功');
@@ -679,9 +554,7 @@
                 const canEdit = isMine || state.isAdmin;
                 deleteConfirmState = false;
                 const delBtn = document.getElementById('dm-delete');
-                delBtn.textContent = "取消预约";
-                delBtn.classList.remove('bg-red-600', 'text-white');
-                delBtn.classList.add('bg-red-100', 'text-red-700');
+                delBtn.textContent = "取消预约"; delBtn.classList.remove('bg-red-600', 'text-white'); delBtn.classList.add('bg-red-100', 'text-red-700');
                 document.getElementById('dm-user').textContent = block.user_id;
                 document.getElementById('dm-time').textContent = `${block.start.format('MM-DD HH:mm')} - ${block.end.format('HH:mm')}`;
                 const remarksEl = document.getElementById('dm-remarks');
@@ -708,8 +581,7 @@
                 if (!currentDetailBlock) return;
                 const delBtn = document.getElementById('dm-delete');
                 if (!deleteConfirmState) {
-                    deleteConfirmState = true; delBtn.textContent = "确认删除？"; delBtn.classList.remove('bg-red-100', 'text-red-700'); delBtn.classList.add('bg-red-600', 'text-white');
-                    return;
+                    deleteConfirmState = true; delBtn.textContent = "确认删除？"; delBtn.classList.remove('bg-red-100', 'text-red-700'); delBtn.classList.add('bg-red-600', 'text-white'); return;
                 }
                 toggleLoad(true); dom.detailsModal.classList.add('hidden');
                 const { error } = await supabase.from('bookings').delete().in('id', currentDetailBlock.ids);
@@ -719,8 +591,7 @@
 
             document.getElementById('manage-equipment-btn').onclick = () => { dom.equipModal.classList.remove('hidden'); renderEquipList(); };
             document.getElementById('add-eq-btn').onclick = async () => {
-                const name = document.getElementById('new-eq-name').value;
-                if(!name) return;
+                const name = document.getElementById('new-eq-name').value; if(!name) return;
                 toggleLoad(true); await supabase.from('equipment').insert({ name });
                 document.getElementById('new-eq-name').value = ''; renderEquipList(); fetchEquipment(); 
             };
@@ -735,21 +606,12 @@
                 toggleLoad(false);
             };
             window.delEquip = async (id) => {
-                if(!confirm('确定删除?')) return;
-                toggleLoad(true); await supabase.from('equipment').delete().eq('id', id); renderEquipList(); fetchEquipment();
+                if(!confirm('确定删除?')) return; toggleLoad(true);
+                await supabase.from('equipment').delete().eq('id', id); renderEquipList(); fetchEquipment();
             };
 
-            // 手动刷新
-            document.getElementById('refresh-btn').onclick = () => {
-                fetchEquipment();
-                showToast('正在刷新数据...', 'info');
-            };
-            
-            // 重新加载 (错误页)
-            dom.retryBtn.onclick = () => {
-                fetchEquipment();
-            };
-
+            document.getElementById('refresh-btn').onclick = () => { fetchEquipment(); showToast('正在刷新...', 'info'); };
+            dom.retryBtn.onclick = () => fetchEquipment();
             dom.userConfirmBtn.onclick = handleUserConfirm;
             dom.userInp.onkeyup = (e) => { if (e.key === 'Enter') handleUserConfirm(); };
             dom.eqSelect.onchange = (e) => { state.currentEquipId = e.target.value; fetchData(); };
@@ -769,8 +631,6 @@
                 dom.equipModal.classList.add('hidden');
             });
             const createDiv = (cls, html) => { const d=document.createElement('div'); d.className=cls; d.innerHTML=html; return d; };
-            
-            // 初始化由口令验证触发
         });
     </script>
 </body>
